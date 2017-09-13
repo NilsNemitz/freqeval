@@ -1,0 +1,8 @@
+*.dll
+__pycache__/*
+**.cpython-36.pyc
+allantools*
+allantools/*
+pyqtgraph*
+pyqtgraph*/*
+.vscode/*

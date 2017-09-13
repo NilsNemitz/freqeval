@@ -1,0 +1,59 @@
+TODO:
+
+- add header line to output files on file creation
+
+TO FIX:
+
+- re-sync at UTC 0:00 creates bad frequency data, but marked GOOD.
+
+
+
+frequency eval:
+
+choose baseline/correction for plot offset
+
+implement range of good data to use
+
+create information / mask file for each loaded dataset
+
+start statisitics for retained data
+
+load/save channel data table (.set file?)
+make corrections editable
+copy mean values to clipboard?
+make filter selection toggleable
+allow re-running filters for changed settings
+
+implement masking
+load/save mask to .msk file
+
+implement "matrix"-table for comb parameters to allow reconstruction of actual frequency
+check that baseline-subtracted data remain small enough for 1E-19 rounding errors
+calculate baseline correction for absolute frequency in arbitrary precision
+
+Allan deviations for individual in-loop signals
+Allan deviation for Sr/In combined signals
+
+implement "show all" and "zoom to good data" functions
+
+allow appending new data
+automate reload every X minutes
+
+file export
+
+move update button to view menu?
+
+re-label fake logarithmic axes in ADev plot
+add gridlines
+
+add report generation to ascii file
+add "good data" export to ascii file for sanity checking
+add "evaluated time series" export
+
+add updates to status bar
+
+toggle-button to show raw frequencies or evaluation result as time series
+
+
+
+  
