@@ -12,11 +12,7 @@ from PyQt5 import ( # pylint: disable=locally-disabled, no-name-in-module
     QtCore, Qt
     )
 
-from PyQt5.QtCore import ( # pylint: disable=locally-disabled, no-name-in-module
-    Qt
-    )
-
-from PyQt5.QtGui import QColor
+from PyQt5.QtCore import Qt as QtC # pylint: disable=locally-disabled, no-name-in-module
 
 import numpy as np
 
@@ -30,11 +26,10 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
     HEADER = (
         "name", "baseline (Hz)", "limit", "corr. (MHz)",
         "ADev ref. (MHz)", "mean value")
-    ROW_NUMBER = 4
-    ROW_HEADER = ("ch1", "ch2", "ch3", "ch4")
 
-    def __init__(self, parent, *args):
+    def __init__(self, parent, logic, *args):
         super().__init__(parent, *args)
+        self._logic = logic
         self._data = np.array(
             [('f_CEO',  12000000,   1, True,   100000000, 429e12, np.nan),               # pylint: disable=locally-disabled, bad-whitespace
              ('f_rep',    433500, 300, True,  1000000000,    1e9, 1000000000.123456789), # pylint: disable=locally-disabled, bad-whitespace
@@ -43,81 +38,104 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
             ], dtype=[
                 ('name', 'S10'),
                 ('base', 'f8'),
-                ('band', 'f8'),
+                ('tole', 'f8'),
                 ('filt', 'bool'),
                 ('corr', 'f8'),
                 ('aref', 'f8'),
                 ('mean', 'f8')
             ])
-        self._color_list = (
-            Gr.SEA,
-            Gr.PURPLE,
-            Gr.MAGENTA,
-            Gr.RED
-        )
+
+    def set_from_config(self, config):
+        """ sets up table content from config data """
+        # we are relying on freqevallogic to make sure there are default values
+        num_channels = config['CONFIG'].getint('channels', 4)
+        print("trying to resize data array to ", num_channels, " channels.")
+        if num_channels > 0 and num_channels <= 32:
+            self._data.resize(num_channels)
+
+        clist = []
+        for index in range(num_channels):
+            section = 'CHANNEL{:d}'.format(index+1)
+            name = config[section].get('name',section)
+            self._data[index]['name'] = name
+            col = config[section].get('color',"999999")
+            clist.append(col)
+            baseline = config[section].getfloat('baseline',0)
+            self._data[index]['base'] = baseline
+            tolerance = config[section].getfloat('tolerance',0)
+            self._data[index]['tole'] = tolerance
+            filter_act = config[section].getboolean('filter',False)
+            self._data[index]['filt'] = filter_act
+            correction = config[section].getfloat('correction',0)
+            self._data[index]['corr'] = correction
+            adev_reference = config[section].getfloat('adev_reference',1)
+            self._data[index]['aref'] = adev_reference
+            self._data[index]['mean'] = 0
+            
+        self._logic.set_channel_color_list(clist)
+        return num_channels
+
+
+    def update_config(self, config):
+        """ update values in config object to prepare for saving """
 
     def columnCount(self, parent):
         return self.COLUMN_NUMBER
 
     def rowCount(self, parent):
-        return self.ROW_NUMBER
+        return self._logic.num_channels
 
     def headerData(self, col, orientation, role):
-        if role != Qt.DisplayRole:
+        if role != QtC.DisplayRole:
             return None
-        if orientation == Qt.Horizontal:
+        if orientation == QtC.Horizontal:
             return self.HEADER[col]
-        if orientation == Qt.Vertical:
-            return self.ROW_HEADER[col]
+        if orientation == QtC.Vertical:
+            return 'ch {:d}'.format(col+1)
         return None
 
     def flags(self, index):
         col = index.column()
         if col == 0:
-            return(
-                Qt.ItemIsEnabled
-                | Qt.ItemIsSelectable
-                | Qt.ItemIsEditable
-                )
+            return QtC.ItemIsEnabled | QtC.ItemIsSelectable | QtC.ItemIsEditable
         elif col == 1:
-            return Qt.ItemIsEnabled
+            return QtC.ItemIsEnabled
         elif col == 2:
             return(
-                Qt.ItemIsEnabled
-                | Qt.ItemIsSelectable
-                | Qt.ItemIsUserCheckable
-                | Qt.ItemIsEditable
+                QtC.ItemIsEnabled | QtC.ItemIsSelectable
+                | QtC.ItemIsUserCheckable | QtC.ItemIsEditable
                 )
         elif  col == 3:
-            return(
-                Qt.ItemIsEnabled
-                | Qt.ItemIsSelectable
-                | Qt.ItemIsEditable
-                )
+            return QtC.ItemIsEnabled | QtC.ItemIsSelectable | QtC.ItemIsEditable
         elif col == 4:
-            return(
-                Qt.ItemIsEnabled
-                | Qt.ItemIsSelectable
-                | Qt.ItemIsEditable
-                )
+            return QtC.ItemIsEnabled | QtC.ItemIsSelectable | QtC.ItemIsEditable
         elif col == 5:
-            return Qt.ItemIsEnabled | Qt.ItemIsSelectable
-        return Qt.ItemIsEnabled
+            return QtC.ItemIsEnabled | QtC.ItemIsSelectable
+        return QtC.ItemIsEnabled
 
     def data(self, index, role):
+        if not index.isValid():
+            return None
         col = index.column()
         row = index.row()
-        if row < 0 or row > self.ROW_NUMBER:
+
+        if col == 0:
+            if role == QtC.DisplayRole:        
+                string = self._data[row]['name'].decode('UTF-8')
+                return string
+            elif role == QtC.BackgroundColorRole:
+                color = self._logic.channel_color_list[row]
+                return color
+            elif role == QtC.TextAlignmentRole:
+                return QtC.AlignCenter
             return None
 
-        if role == Qt.DisplayRole:
+        if role == QtC.DisplayRole:
             string = "error"
-            if col == 0:
-                string = self._data[row]['name'].decode('UTF-8')
-            elif col == 1: # baseline value
+            if col == 1: # baseline value
                 string = '{:,.0f}'.format(self._data[row]['base'])
-            elif col == 2: # filter / allowed band
-                string = "{0:{1}>5,.1f}".format(self._data[row]['band']," ")
+            elif col == 2: # filter / tolerance
+                string = "{0:{1}>5,.1f}".format(self._data[row]['tole']," ")
                 # pad with digit-sized space
             elif col == 3: # offset
                 string = '{:+,.3f}'.format(self._data[row]['corr']/1000000)
@@ -127,25 +145,24 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
                 string = "{0:{1}>18,.6f}".format(self._data[row]['mean']," ") 
                 # pad with digit-sized space
             return string
-        if role == Qt.CheckStateRole:
+            
+        if role == QtC.CheckStateRole:
             if( col == 2):
                 if( self._data[row]['filt'] ):
-                    return(Qt.Checked)
+                    return(QtC.Checked)
                 else: 
-                    return(Qt.Unchecked)
-        if role == Qt.TextAlignmentRole:
-            if( col == 0):
-                return Qt.AlignCenter
-            elif( col == 1): # baseline value
-                return Qt.AlignRight
-            elif( col == 2): # filter / allowed band
-                return Qt.AlignLeft
+                    return(QtC.Unchecked)
+        if role == QtC.TextAlignmentRole:
+            if( col == 1): # baseline value
+                return QtC.AlignRight | QtC.AlignVCenter
+            elif( col == 2): # filter / tolerance
+                return QtC.AlignLeft | QtC.AlignVCenter
             elif( col == 3): # offset
-                return Qt.AlignRight
+                return QtC.AlignRight | QtC.AlignVCenter
             elif( col == 4): # ADev reference
-                return Qt.AlignRight
+                return QtC.AlignRight | QtC.AlignVCenter
             elif( col == 5): # mean
-                return Qt.AlignRight
+                return QtC.AlignRight | QtC.AlignVCenter
 
         return None
 
@@ -161,28 +178,19 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
         """ getter function for baseline values """
         return self._data['base']
     
-    def bands(self):
-        """ getter function for band restriction for unlock filter """
-        return self._data['band']
+    def tolerances(self):
+        """ getter function for tolerance for unlock filter """
+        return self._data['tole']
 
     def adev_ref(self):
         """ getter function for ADev reference value """
         return self._data['aref']
 
-    def set_color_list(self, list):
-        return
-
-    def color(self, col):
-        if col < 0 or col >= len(self._color_list): 
-            return None
-        return self._color_list[col]
-            
-
-    def set_mean(self, index, value):
+    def set_mean(self, num_index, value):
         """ setter function for mean value """
-        if index < 0 or index >= self.ROW_NUMBER:
+        if num_index < 0 or num_index >= self._logic.num_channels:
             return
-        self._data[index]['mean'] = value + self._data[index]['base']
+        self._data[num_index]['mean'] = value + self._data[num_index]['base']
 
     def print_data(self):
         """ debug print of table status """

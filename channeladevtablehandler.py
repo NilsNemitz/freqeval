@@ -22,31 +22,18 @@ class ChannelADevTableModel(QtCore.QAbstractTableModel):
     """ adjust handling of data in config table """
 
     COLUMN_NUMBER = 5
-    HEADER = ("tau (s)", "Ch 1", "Ch 2", "Ch 3","Ch 4")
+    HEADER = ("tau (s)", "Ch 1", "Ch 2", "Ch 3", "Ch 4")
     ROW_NUMBER = 4
     ROW_HEADER = ("1", "2", "3", "4")
 
-    def __init__(self, parent, channel_table):
+    def __init__(self, parent, logic):
         super().__init__(parent)
-        self._channel_table = channel_table
-        print("channel table: ",self._channel_table)
-        #self.data = np.array(
-        #    [('f_CEO', 12000000,   1, True,   100000000, 429e12, np.nan),               # pylint: disable=locally-disabled, bad-whitespace
-        #     ('f_rep',   400000, 300, True,  1000000000,    1e9, 1000000000.123456789), # pylint: disable=locally-disabled, bad-whitespace
-        #     ('Sr beat',      0,   0, False,   80000000, 429e12, np.nan),                # pylint: disable=locally-disabled, bad-whitespace
-        #     ('In beat',1500000,   0, False,  130000000, 317e12, np.nan)                 # pylint: disable=locally-disabled, bad-whitespace
-        #    ], dtype=[
-        #        ('name', 'S10'),
-        #        ('base', 'f8'),
-        #        ('band', 'f8'),
-        #        ('filt', 'bool'),
-        #        ('corr', 'f8'),
-        #        ('aref', 'f8'),
-        #        ('mean', 'f8')
-        #    ])
+        self._logic = logic
+        self._channel_table = self._logic.channel_table
+        print("channel table: ", self._channel_table)
 
     def columnCount(self, parent):
-        return self._channel_table.rowCount(parent)        
+        return self._channel_table.rowCount(parent)
 
     def rowCount(self, parent):
         return self.ROW_NUMBER
@@ -60,9 +47,9 @@ class ChannelADevTableModel(QtCore.QAbstractTableModel):
         #if role == Qt.DisplayRole:
         #    if orientation == Qt.Horizontal:
         #        #print("getting name for column ",col)
-        #        index = self._channel_table.createIndex(col, 0) 
+        #        index = self._channel_table.createIndex(col, 0)
         #        name = self._channel_table.data(index, Qt.DisplayRole)
-        #        return "ch"+str(col+1)+" ("+name+")"            
+        #        return "ch"+str(col+1)+" ("+name+")"
         #    if orientation == Qt.Vertical:
         #        return self.ROW_HEADER[col]
         #if role == Qt.ForegroundRole and orientation == Qt.Horizontal:
@@ -110,15 +97,14 @@ class ChannelADevTableModel(QtCore.QAbstractTableModel):
 
         if row == 0:
             if role == Qt.DisplayRole:
-                index = self._channel_table.createIndex(col, 0) 
+                index = self._channel_table.createIndex(col, 0)
                 name = self._channel_table.data(index, Qt.DisplayRole)
-                return "ch"+str(col+1)+" ("+name+")"            
+                return "ch"+str(col+1)+" ("+name+")"
                 return
             elif role == Qt.BackgroundColorRole:
-                color = self._channel_table.color(col)
+                color = self._logic.channel_color_list[col]
                 return color
                 #return QtGui.QColor(214,  73, 183)
-            
 
         if role == Qt.DisplayRole:
             string = "error"

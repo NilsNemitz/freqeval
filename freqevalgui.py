@@ -6,7 +6,7 @@ Created on 2017/09/03
 @author: Nils Nemitz
 """
 
-# pylint: disable=locally-disabled, redefined-variable-type
+# py#lint: disable=locally-disabled, redefined-variable-type
 # pylint: disable=locally-disabled, too-many-instance-attributes
 
 
@@ -23,7 +23,8 @@ from PyQt5.QtWidgets import ( # pylint: disable=locally-disabled, no-name-in-mod
     QFrame, QLabel, QTableView,
     #qApp,
     QFileDialog,
-    QPushButton, QAction,
+    # QPushButton,
+    QAction,
     QHBoxLayout, QVBoxLayout,
     #QGridLayout,
     QSplitter, QScrollArea,
@@ -39,9 +40,6 @@ from PyQt5.QtCore import ( # pylint: disable=locally-disabled, no-name-in-module
 import pyqtgraph_core as pg
 
 from freqevallogic import FreqEvalLogic
-from channeltablehandler import ChannelTableModel
-from channeladevtablehandler import ChannelADevTableModel
-from evaluationtablehandler import EvaluationTableModel
 
 class FreqEvalMain(QMainWindow):
     """main class widget for comb counter readout program"""
@@ -51,15 +49,16 @@ class FreqEvalMain(QMainWindow):
         self.app = app
         self.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(logo()))) # pylint: disable=locally-disabled, no-member
         #self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint) # pylint: disable=locally-disabled, no-member
-        self.setWindowFlags(self.windowFlags()) # pylint: disable=locally-disabled, no-member
-        self.settings = QSettings('freqeval.ini', QSettings.IniFormat)
-        self.settings.setFallbacksEnabled(False)
+        #self.setWindowFlags(self.windowFlags()) # pylint: disable=locally-disabled, no-member
+        self._settings = QSettings('freqeval.ini', QSettings.IniFormat)
+        self._settings.setFallbacksEnabled(False)
         # configuration constants
+        self._logic = FreqEvalLogic(self)
         self.init_gui()
-        self.logic = FreqEvalLogic(self)
+        self._logic.init_graphs()
         self.show()
         self.init_state() # code in init_state has access to logic already
-        self.base_path = self.settings.value('basepath', "")
+        self._base_path = self._settings.value('basepath', "")
 
 
     ###############################################################################
@@ -77,27 +76,47 @@ class FreqEvalMain(QMainWindow):
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Open data file",
-            self.base_path,
+            self._base_path,
             "CSV Data Files (*.csv);;All Files (*)",
             options=options
             )
         if filename:
-            self.base_path = os.path.dirname(filename)
-            print(self.base_path)
-            self.logic.open_data_file(filename) # trigger file loading
+            self._base_path = os.path.dirname(filename)
+            self._logic.open_data_file(filename) # trigger file loading
 
     ###############################################################################
-    def channel_table(self):
-        """ getter function for reference to channel table object """
-        return self._channel_table
+    def save_report(self, qval):
+        """ save associated config file, generate and save report """
+        del qval
+        status = self._logic.save_report()
+        if status == -2:
+            QMessageBox.about(self, "Report generation", "No data file is currently open.")
+        elif status == -1:
+            QMessageBox.about(self, "Report generation", "Report generation failed.")
+        elif status == 0:
+            QMessageBox.about(
+                self, "Report generation", 
+                "Report was successfully generated and saved along with current configuration."
+            )
+
+    ###############################################################################
+    def save_default_config(self, qval):
+        """ save associated config file, generate and save report """
+        del qval
+        status = self._logic.save_default_config()
+        if status == -1:
+            QMessageBox.about(self, "Configuration", "Updating default configuration file failed.")
+        if status == 0:
+            QMessageBox.about(self, "Configuration", "Default configuration file has been updated with current settings.")
+
 
     ###############################################################################
     def init_gui(self):
         """initialize and load basic settings for UI"""
 
         self.setWindowTitle('Frequency Evaluation for Comb Count')
-        self.resize(self.settings.value('windowsize', QtCore.QSize(270, 225))) # pylint: disable=locally-disabled, no-member
-        self.move(self.settings.value('windowposition', QtCore.QPoint(50, 50))) # pylint: disable=locally-disabled, no-member
+        self.resize(self._settings.value('windowsize', QtCore.QSize(270, 225))) # pylint: disable=locally-disabled, no-member
+        self.move(self._settings.value('windowposition', QtCore.QPoint(50, 50))) # pylint: disable=locally-disabled, no-member
 
         ### set up menus #########################################################
         menubar = self.menuBar()
@@ -107,6 +126,16 @@ class FreqEvalMain(QMainWindow):
         open_act.setStatusTip('Open data file')
         open_act.triggered.connect(self.select_data_file)
 
+        report_act = QAction('Save &report', self)
+        report_act.setShortcut('Ctrl+R')
+        report_act.setStatusTip('Save report and config for current data file')
+        report_act.triggered.connect(self.save_report)
+
+        save_config_act = QAction('Save &default config', self)
+        #save_config_act.setShortcut('Ctrl+O')
+        save_config_act.setStatusTip('Save current channel and evaluation configuration as default')
+        save_config_act.triggered.connect(self.save_default_config)
+
         exit_act = QAction('&Exit', self)
         exit_act.setShortcut('Ctrl+Q')
         exit_act.setStatusTip('Exit application')
@@ -114,6 +143,8 @@ class FreqEvalMain(QMainWindow):
 
         file_menu = menubar.addMenu('&File')
         file_menu.addAction(open_act)
+        file_menu.addAction(report_act)
+        file_menu.addAction(save_config_act)
         file_menu.addAction(exit_act)
 
         mask_act = QAction('&Mask selected', self)
@@ -179,7 +210,6 @@ class FreqEvalMain(QMainWindow):
         graph2 = pg.GraphicsView()
         graph2.setCentralItem(self.graph2_layout)
 
-
         ### scrollable sub-frame for results and configuration tables
         channel_table_title_label = QLabel("Channel settings")
         channel_table_title_label.setStyleSheet("font-weight: bold;")
@@ -187,21 +217,17 @@ class FreqEvalMain(QMainWindow):
         ch_adev_table_title_label.setStyleSheet("font-weight: bold;")
         evaluation_table_title_label = QLabel("Evaluation settings and results")
         evaluation_table_title_label.setStyleSheet("font-weight: bold;")
-        
 
         ### table for evaluation parameter input
         ### will move to a config screen later
-        self._channel_table = ChannelTableModel(self)
         self._channel_table_view = QTableView()
+        self._channel_table_view.setModel(self._logic.channel_table)
         self._channel_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._channel_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._channel_table_view.setModel(self._channel_table)
-        verticalHeader = self._channel_table_view.verticalHeader()
-        verticalHeader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
-        verticalHeader.setMaximumSectionSize(22)
-        verticalHeader.setDefaultAlignment(Qt.AlignCenter)
-
-
+        vertical_header = self._channel_table_view.verticalHeader()
+        vertical_header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
+        vertical_header.setMaximumSectionSize(22)
+        vertical_header.setDefaultAlignment(Qt.AlignCenter)
         self._channel_table_view.resizeRowsToContents()
         self._channel_table_view.resizeColumnsToContents()
         vheader = self._channel_table_view.verticalHeader()
@@ -213,34 +239,32 @@ class FreqEvalMain(QMainWindow):
         self._channel_table_view.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         ### table for Allan deviation results
-        self._ch_adev_table = ChannelADevTableModel(self, self._channel_table)
-        self._ch_adev_table_view = QTableView()
-        self._ch_adev_table_view.horizontalHeader().hide()
-        self._ch_adev_table_view.verticalHeader().hide()
-        self._ch_adev_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._ch_adev_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._ch_adev_table_view.setModel(self._ch_adev_table)
-        self._ch_adev_table_view.resizeRowsToContents()
-        self._ch_adev_table_view.resizeColumnsToContents()
-        vheader = self._ch_adev_table_view.verticalHeader()
-        hheader = self._ch_adev_table_view.horizontalHeader()
-        self._ch_adev_table_view.setFixedHeight(vheader.length()+hheader.height()+2)
+        self._adev_table_view = QTableView()
+        self._adev_table_view.setModel(self._logic.adev_table)
+        self._adev_table_view.horizontalHeader().hide()
+        self._adev_table_view.verticalHeader().hide()
+        self._adev_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._adev_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._adev_table_view.resizeRowsToContents()
+        self._adev_table_view.resizeColumnsToContents()
+        vheader = self._adev_table_view.verticalHeader()
+        hheader = self._adev_table_view.horizontalHeader()
+        self._adev_table_view.setFixedHeight(vheader.length()+hheader.height()+2)
         #self._ch_adev_table_view.setFixedSize(
         #    hheader.length()+vheader.width()+2,
         #    vheader.length()+hheader.height()+2
         #    )
         # self._ch_adev_table_view.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self._ch_adev_table_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._adev_table_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         ### table for evaluation parameter input
-        self._evaluation_table = EvaluationTableModel(self, self._channel_table)
         self._evaluation_table_view = QTableView()
+        self._evaluation_table_view.setModel(self._logic.evaluation_table)
         self._evaluation_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._evaluation_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._evaluation_table_view.setModel(self._evaluation_table)
         self._evaluation_table_view.setStyleSheet("item::padding: 20px")
         self._evaluation_table_view.show()
-        
+
         self._evaluation_table_view.resizeRowsToContents()
         self._evaluation_table_view.resizeColumnsToContents()
         vheader = self._evaluation_table_view.verticalHeader()
@@ -261,8 +285,8 @@ class FreqEvalMain(QMainWindow):
         results_frame_layout.addWidget(evaluation_table_title_label)
         results_frame_layout.addWidget(self._evaluation_table_view)
         results_frame_layout.addWidget(ch_adev_table_title_label)
-        results_frame_layout.addWidget(self._ch_adev_table_view)
-        
+        results_frame_layout.addWidget(self._adev_table_view)
+
         ### create scrollable area to wrap results frame ###
         scroll_area = QScrollArea()
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -407,15 +431,15 @@ class FreqEvalMain(QMainWindow):
             quit_msg, QMessageBox.Yes, QMessageBox.No
             )
         if reply == QMessageBox.Yes:
-            self.settings.sync()
+            self._settings.sync()
             event.accept()
         else:
             event.ignore()
             return
 
-        self.settings.setValue('windowposition', self.pos())
-        self.settings.setValue('windowsize', self.size())
-        self.settings.setValue('basepath', self.base_path)
+        self._settings.setValue('windowposition', self.pos())
+        self._settings.setValue('windowsize', self.size())
+        self._settings.setValue('basepath', self._base_path)
 
 
         #self.settings.setValue('display_size', int(index))
@@ -444,7 +468,7 @@ class FreqEvalMain(QMainWindow):
 
         #self.logic.shutdown()
 
-        self.settings.setValue('basepath', self.base_path)
+        self._settings.setValue('basepath', self._base_path)
 
 def logo():
     """define logo pixmap"""

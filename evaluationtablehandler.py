@@ -9,25 +9,25 @@ Created on 2017/09/10
 # pylint: disable=locally-disabled, bare-except
 
 from PyQt5 import ( # pylint: disable=locally-disabled, no-name-in-module
-    QtCore, Qt
+    QtCore
     )
 
 from PyQt5.QtCore import Qt as QtC # pylint: disable=locally-disabled, no-name-in-module
 #from PyQt5.QtGui import QColor
 
-import numpy as np
+# import numpy as np
 
 #from freqevalconstants import Gr # color definitions
 
 
-class EvaluationTableModel(QtCore.QAbstractTableModel):
+class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locally-disabled, no-member
     """ adjust handling of data in evaluation matrix/table """
 
     COLUMN_NUMBER = 2
     HEADER = ("strontium", "indium")
     ROW_NUMBER = 9
     ROW_HEADER = (
-        "actual frequency",        
+        "actual frequency",
         "baseline-subtracted",
         "estim. uncertainty",
         "",
@@ -36,12 +36,12 @@ class EvaluationTableModel(QtCore.QAbstractTableModel):
         "ch3 coeff. (f_Sr)",
         "ch4 coeff. (f_In)",
         "baseline (Hz)"
-         )
+        )
 
     def __init__(self, parent, channel_table):
         super().__init__(parent)
         self._channel_table = channel_table
-        print("setting up evaluation table with channel table: ",self._channel_table)
+        print("setting up evaluation table with channel table: ", self._channel_table)
         #self._data = np.array(
         #    [('f_CEO', 12000000,   1, True,   100000000, 429e12, np.nan),               # pylint: disable=locally-disabled, bad-whitespace
         #     ('f_rep',   400000, 300, True,  1000000000,    1e9, 1000000000.123456789), # pylint: disable=locally-disabled, bad-whitespace
@@ -63,13 +63,18 @@ class EvaluationTableModel(QtCore.QAbstractTableModel):
         #    Gr.RED
         #)
 
-    def columnCount(self, parent):
+    def columnCount(self, parent): # pylint: disable=locally-disabled, invalid-name
+        """ TableView: return number of columns """
+        del parent
         return self.COLUMN_NUMBER
 
-    def rowCount(self, parent):
+    def rowCount(self, parent): # pylint: disable=locally-disabled, invalid-name
+        """ TableView: return number of rows """
+        del parent
         return self.ROW_NUMBER
 
-    def headerData(self, col, orientation, role):
+    def headerData(self, col, orientation, role): # pylint: disable=locally-disabled, invalid-name
+        """ TableView: return header strings and alignment """
         if role != QtC.DisplayRole:
             return None
         if orientation == QtC.Horizontal:
@@ -79,6 +84,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel):
         return None
 
     def flags(self, index):
+        """ TableView: return cell flags """
         if not index.isValid():
             return None
         col = index.column()
@@ -89,7 +95,8 @@ class EvaluationTableModel(QtCore.QAbstractTableModel):
             | QtC.ItemIsEditable
         )
 
-    def data(self, index, role):
+    def data(self, index, role): # pylint: disable=locally-disabled, too-many-branches
+        """ TableView: return formatted data """
         if not index.isValid():
             return None
         col = index.column()
@@ -110,22 +117,22 @@ class EvaluationTableModel(QtCore.QAbstractTableModel):
             elif col == 4: # ADev refernce
                 string = '{:,.0f}'.format(self._data[row]['aref']/1000000)
             elif col == 5:
-                string = "{0:{1}>18,.6f}".format(self._data[row]['mean']," ") 
+                string = "{0:{1}>18,.6f}".format(self._data[row]['mean']," ")
                 # pad with digit-sized space
             return string
         if role == QtC.TextAlignmentRole:
-            if( col == 0):
-                return QtC.AlignCenter
-            elif( col == 1): # baseline value
-                return QtC.AlignRight
-            elif( col == 2): # filter / allowed band
-                return QtC.AlignLeft
-            elif( col == 3): # offset
-                return QtC.AlignRight
-            elif( col == 4): # ADev reference
-                return QtC.AlignRight
-            elif( col == 5): # mean
-                return QtC.AlignRight
+            if col == 0:
+                return QtC.AlignVCenter #QtC.AlignCenter | QtC.AlignVCenter
+            elif col == 1: # baseline value
+                return QtC.AlignVCenter #QtC.AlignRight | QtC.AlignVCenter
+            elif col == 2: # filter / allowed band
+                return QtC.AlignVCenter #QtC.AlignLeft | QtC.AlignVCenter
+            elif col == 3: # offset
+                return QtC.AlignVCenter #QtC.AlignRight | QtC.AlignVCenter
+            elif col == 4: # ADev reference
+                return QtC.AlignVCenter #QtC.AlignRight | QtC.AlignVCenter
+            elif col == 5: # mean
+                return QtC.AlignVCenter #QtC.AlignRight | QtC.AlignVCenter
         if role == QtC.CheckStateRole:
             return None
 
@@ -142,7 +149,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel):
     def baselines(self):
         """ getter function for baseline values """
         return self._data['base']
-    
+
     def bands(self):
         """ getter function for band restriction for unlock filter """
         return self._data['band']
@@ -150,15 +157,6 @@ class EvaluationTableModel(QtCore.QAbstractTableModel):
     def adev_ref(self):
         """ getter function for ADev reference value """
         return self._data['aref']
-
-    def set_color_list(self, list):
-        return
-
-    def color(self, col):
-        if col < 0 or col >= len(self._color_list): 
-            return None
-        return self._color_list[col]
-            
 
     def set_mean(self, index, value):
         """ setter function for mean value """
@@ -169,7 +167,3 @@ class EvaluationTableModel(QtCore.QAbstractTableModel):
     def print_data(self):
         """ debug print of table status """
         print(self._data['mean'])
-        
-
-
-        
