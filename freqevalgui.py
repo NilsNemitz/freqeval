@@ -15,7 +15,7 @@ Created on 2017/09/03
 import os
 
 from PyQt5 import ( # pylint: disable=locally-disabled, no-name-in-module
-    QtGui, QtCore
+    QtGui, QtCore, QtWidgets
     )
 from PyQt5.QtWidgets import ( # pylint: disable=locally-disabled, no-name-in-module
     QMainWindow, QMessageBox,
@@ -60,7 +60,6 @@ class FreqEvalMain(QMainWindow):
         self.show()
         self.init_state() # code in init_state has access to logic already
         self.base_path = self.settings.value('basepath', "")
-
 
 
     ###############################################################################
@@ -197,6 +196,12 @@ class FreqEvalMain(QMainWindow):
         self._channel_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._channel_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._channel_table_view.setModel(self._channel_table)
+        verticalHeader = self._channel_table_view.verticalHeader()
+        verticalHeader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        verticalHeader.setMaximumSectionSize(22)
+        verticalHeader.setDefaultAlignment(Qt.AlignCenter)
+
+
         self._channel_table_view.resizeRowsToContents()
         self._channel_table_view.resizeColumnsToContents()
         vheader = self._channel_table_view.verticalHeader()

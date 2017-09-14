@@ -2,6 +2,17 @@ If required, install python through mini-conda distribution:
 32 bit (for compatibility with 32 bit dll used by frequency counter)
 version 3.6.x
 
+install scipy:
+conda install scipy
+
+install pyqt
+conda install pyqt
+(will get version 5.6.0 automatically)
+
+install pandas data mining libray
+conda install pandas
+
+install main freqeval program:
 git clone https://github.com/NilsNemitz/freqeval
 
 
@@ -31,11 +42,12 @@ self.atlasData[x:x+w, y:y+h] = rendered[key]
 
 Getting AllanTools:
   git clone https://github.com/aewallin/allantools
-into subfolder of program directory
+execute in freqeval folder to put allantools into subfolder
 
   conda install pytest
 
 then install AllanTools with
+(from allantools subfolder)
   python setup.py install
 
 Install dark stylesheet for pyQt
