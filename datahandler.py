@@ -40,7 +40,7 @@ class DataHandler(object):
         self.tmin = 0
         self.baselines = [0] * 4
         self.overhangs = [1, 10] # points marked bad before/after "out-of-band" point
-        self.threshold = 4
+        self.threshold = 8
         self._ch_adev_obj = None
 
 

@@ -36,10 +36,10 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
     def __init__(self, parent, *args):
         super().__init__(parent, *args)
         self._data = np.array(
-            [('f_CEO', 12000000,   1, True,   100000000, 429e12, np.nan),               # pylint: disable=locally-disabled, bad-whitespace
-             ('f_rep',   400000, 300, True,  1000000000,    1e9, 1000000000.123456789), # pylint: disable=locally-disabled, bad-whitespace
-             ('Sr beat',      0,   0, False,   80000000, 429e12, np.nan),                # pylint: disable=locally-disabled, bad-whitespace
-             ('In beat',1500000,   0, False,  130000000, 317e12, np.nan)                 # pylint: disable=locally-disabled, bad-whitespace
+            [('f_CEO',  12000000,   1, True,   100000000, 429e12, np.nan),               # pylint: disable=locally-disabled, bad-whitespace
+             ('f_rep',    433500, 300, True,  1000000000,    1e9, 1000000000.123456789), # pylint: disable=locally-disabled, bad-whitespace
+             ('Sr beat',58000000, 300, True,    80500000, 429e12, np.nan),                # pylint: disable=locally-disabled, bad-whitespace
+             ('In beat', 1500000,   0, False,  130000000, 317e12, np.nan)                 # pylint: disable=locally-disabled, bad-whitespace
             ], dtype=[
                 ('name', 'S10'),
                 ('base', 'f8'),

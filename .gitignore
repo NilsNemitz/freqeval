@@ -2,7 +2,7 @@
 __pycache__/*
 **.cpython-36.pyc
 allantools*
-allantools/*
+allantools/**
 pyqtgraph*
-pyqtgraph*/*
+pyqtgraph*/**
 .vscode/*
