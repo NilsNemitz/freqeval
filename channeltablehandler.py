@@ -45,6 +45,7 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
                 ('mean', 'f8')
             ]) # TODO: convert to python data structure
 
+    #######################################################################
     def set_from_config(self, config):
         """ sets up table content from config data """
         # we are relying on freqevallogic to make sure there are default values
@@ -56,36 +57,42 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
         clist = []
         for index in range(num_channels):
             section = 'CHANNEL{:d}'.format(index+1)
-            name = config[section].get('name',section)
+            name = config[section].get('name', section)
             self._data[index]['name'] = name
-            col = config[section].get('color',"999999")
+            col = config[section].get('color', "999999")
             clist.append(col)
-            baseline = config[section].getint('baseline',0)
+            baseline = config[section].getint('baseline', 0)
             self._data[index]['base'] = baseline # TODO: allow only int
-            tolerance = config[section].getfloat('tolerance',0)
+            tolerance = config[section].getfloat('tolerance', 0)
             self._data[index]['tole'] = tolerance
-            filter_act = config[section].getboolean('filter',False)
+            filter_act = config[section].getboolean('filter', False)
             self._data[index]['filt'] = filter_act
-            correction = config[section].getfloat('correction',0)
+            correction = config[section].getfloat('correction', 0)
             self._data[index]['corr'] = correction
-            adev_reference = config[section].getfloat('adev_reference',1)
+            adev_reference = config[section].getfloat('adev_reference', 1)
             self._data[index]['aref'] = adev_reference
             self._data[index]['mean'] = 0
-            
+
         self._logic.set_channel_color_list(clist)
         return num_channels
 
-
+    #######################################################################
     def update_config(self, config):
         """ update values in config object to prepare for saving """
 
+    #######################################################################
     def columnCount(self, parent):
+        """ QTableView interface: column number """
         return self.COLUMN_NUMBER
 
+    #######################################################################
     def rowCount(self, parent):
+        """ QTableView interface: row number """
         return self._logic.num_channels
 
+    #######################################################################
     def headerData(self, col, orientation, role):
+        """ QTableView interface: header text and formatting """
         if role != QtC.DisplayRole:
             return None
         if orientation == QtC.Horizontal:
@@ -94,7 +101,9 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
             return 'ch {:d}'.format(col+1)
         return None
 
+    #######################################################################
     def flags(self, index):
+        """ QTableView interface: select/enable/etc flags """
         col = index.column()
         if col == 0:
             return QtC.ItemIsEnabled | QtC.ItemIsSelectable | QtC.ItemIsEditable
@@ -113,14 +122,16 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
             return QtC.ItemIsEnabled | QtC.ItemIsSelectable
         return QtC.ItemIsEnabled
 
+    #######################################################################
     def data(self, index, role):
+        """ QTableView interface: main data access """
         if not index.isValid():
             return None
         col = index.column()
         row = index.row()
 
         if col == 0:
-            if role == QtC.DisplayRole:        
+            if role == QtC.DisplayRole:
                 string = self._data[row]['name'].decode('UTF-8')
                 return string
             elif role == QtC.BackgroundColorRole:
@@ -166,37 +177,44 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
 
         return None
 
+    #######################################################################
     def names(self):
         """ getter function for channel name """
         return self._data['name']
 
+    #######################################################################
     def filter_state(self):
         """ getter function for channel filter toggles """
         return self._data['filt']
 
+    #######################################################################
     def baselines(self):
         """ getter function for baseline values """
         return self._data['base']
     
+    #######################################################################
     def corrections(self):
         """ getter function for correction values """
         return self._data['corr']
-    
-    
+
+    #######################################################################
     def tolerances(self):
         """ getter function for tolerance for unlock filter """
         return self._data['tole']
 
+    #######################################################################
     def adev_ref(self):
         """ getter function for ADev reference value """
         return self._data['aref']
 
+    #######################################################################
     def set_mean(self, num_index, value):
         """ setter function for mean value """
         if num_index < 0 or num_index >= self._logic.num_channels:
             return
         self._data[num_index]['mean'] = value + self._data[num_index]['base']
 
+    #######################################################################
     def print_data(self):
         """ debug print of table status """
         print(self._data['mean'])

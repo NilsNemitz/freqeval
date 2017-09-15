@@ -70,19 +70,19 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             else:
                 new_dict['type'] = -1
                 print("ET.set_from_config: Unknown type specification: ", evaltype)
-            
+
             line_index = config[section].getint('main_comb_line', 1)
             new_dict['n_a'] = dec.Decimal(line_index)
             new_dict['ch_a'] = config[section].getint('main_beat_channel', 1)
-            
+
             line_index = config[section].getint('ref_comb_line', 1)
             new_dict['n_b'] = dec.Decimal(line_index)
             new_dict['ch_b'] = config[section].getint('ref_beat_channel', 1)
-            
+
             line_index = config[section].getint('rep_rate_line', 1)
             new_dict['n_r'] = dec.Decimal(line_index)
             new_dict['ch_r'] = config[section].getint('rep_rate_channel', 1)
-            
+
             target = config[section].get('target', '123456789012345667890')
             targetval = dec.Decimal(target) # store as arbitrary precision
             new_dict['target'] = targetval
@@ -111,7 +111,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             base_rep = dec.Decimal(int(baselines[ch_rep-1]))
             corr_rep = dec.Decimal(int(corrections[ch_rep-1]))
             base_rep += corr_rep
-            
+
             if ch_beat > 0:
                 base_beat = dec.Decimal(int(+baselines[+ch_beat-1]))
                 corr_beat = dec.Decimal(int(+corrections[+ch_beat-1]))
@@ -119,14 +119,14 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
                 base_beat = dec.Decimal(int(-baselines[-ch_beat-1]))
                 corr_beat = dec.Decimal(int(-corrections[-ch_beat-1]))
             base_beat += corr_beat
-                        
+
             relative = dec.Decimal(0) # gets filled in later
 
             if new_dict['type'] == 1: # absolute frequency mode
                 r_ab = n_a/n_r
                 base_freq = base_ceo + (n_a/n_r) * base_rep + base_beat
                 result = base_freq + relative
-                uncert = dec.Decimal(1)                
+                uncert = dec.Decimal(1)
                 deviation = result - target
                 frac_dev = deviation / result
                 frac_unc = uncert / result
@@ -147,14 +147,14 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
                 frac_dev = dec.Decimal('NaN')
                 frac_unc = dec.Decimal('NaN')
             print(
-                'f_ceo: ',repr(base_ceo),
-                '   f_rep: ',repr(base_rep),
-                '   f_freq: ',repr(base_freq),
-                '   decimals precision: ',dec.getcontext().prec
+                'f_ceo: ', repr(base_ceo),
+                '   f_rep: ', repr(base_rep),
+                '   f_freq: ', repr(base_freq),
+                '   decimals precision: ', dec.getcontext().prec
                 )
-            
+
             new_dict['r_ab'] = r_ab
-            new_dict['base_freq'] = base_freq            
+            new_dict['base_freq'] = base_freq
             new_dict['relative'] = relative # gets filled in later
             new_dict['result'] = result # gets updated later
             new_dict['uncert'] = uncert # gets filled in later
@@ -210,11 +210,11 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif role == QtC.TextAlignmentRole:
                 return QtC.AlignCenter
             return None
-        
+
         if role == QtC.TextAlignmentRole:
             return QtC.AlignCenter | QtC.AlignRight
         elif role == QtC.BackgroundColorRole:
-            if row == 4 or row == 8 or row == 11 or row == 16: 
+            if row == 4 or row == 8 or row == 11 or row == 16:
                 color = self._logic.evaluation_color_list[col]
                 return color
                 # return self._logic.GRAY
@@ -246,7 +246,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif self._data[col]['type'] == 2: # frequency ratio mode
                 string = '{:24.19f}'.format(value)
             else:
-                 string = 'undefined'
+                string = 'undefined'
 
         elif row == 6:
             value = self._data[col]['base_freq']
@@ -255,8 +255,8 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif self._data[col]['type'] == 2: # frequency ratio mode
                 string = ''
             else:
-                 string = 'undefined'
-                                
+                string = 'undefined'
+
         elif row == 7:
             value = self._data[col]['relative']
             if self._data[col]['type'] == 1: # absolute frequency mode
@@ -264,7 +264,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif self._data[col]['type'] == 2: # frequency ratio mode
                 string = '{:24,.19f}'.format(value)
             else:
-                 string = 'undefined'
+                string = 'undefined'
 
         elif row == 9:
             value = self._data[col]['result']
@@ -273,7 +273,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif self._data[col]['type'] == 2: # frequency ratio mode
                 string = '{:24,.19f}'.format(value)
             else:
-                 string = 'undefined'
+                string = 'undefined'
 
         elif row == 10:
             value = self._data[col]['uncert']
@@ -282,7 +282,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif self._data[col]['type'] == 2: # frequency ratio mode
                 string = '{:24,.19f}'.format(value)
             else:
-                 string = 'undefined'
+                string = 'undefined'
 
         elif row == 12:
             value = self._data[col]['target']
@@ -291,7 +291,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif self._data[col]['type'] == 2: # frequency ratio mode
                 string = ''
             else:
-                 string = 'undefined'
+                string = 'undefined'
 
         elif row == 13:
             value = self._data[col]['deviation']
@@ -300,7 +300,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif self._data[col]['type'] == 2: # frequency ratio mode
                 string = ''
             else:
-                 string = 'undefined'
+                string = 'undefined'
 
         elif row == 14:
             value = self._data[col]['frac_dev']
@@ -311,14 +311,15 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             elif self._data[col]['type'] == 2: # frequency ratio mode
                 string = ''
             else:
-                 string = 'undefined'
-            
+                string = 'undefined'
+
         elif row == 15:
             value = self._data[col]['frac_unc']
             value = round(value, 19)
             string = '{:E}'.format(value)
 
         return string
+    # TODO: implement plotting selection box
         if role == QtC.CheckStateRole:
             return None
 
