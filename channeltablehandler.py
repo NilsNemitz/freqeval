@@ -43,7 +43,7 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
                 ('corr', 'f8'),
                 ('aref', 'f8'),
                 ('mean', 'f8')
-            ])
+            ]) # TODO: convert to python data structure
 
     def set_from_config(self, config):
         """ sets up table content from config data """
@@ -60,8 +60,8 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
             self._data[index]['name'] = name
             col = config[section].get('color',"999999")
             clist.append(col)
-            baseline = config[section].getfloat('baseline',0)
-            self._data[index]['base'] = baseline
+            baseline = config[section].getint('baseline',0)
+            self._data[index]['base'] = baseline # TODO: allow only int
             tolerance = config[section].getfloat('tolerance',0)
             self._data[index]['tole'] = tolerance
             filter_act = config[section].getboolean('filter',False)
@@ -167,7 +167,7 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
         return None
 
     def names(self):
-        """ getter function for channel filter toggles """
+        """ getter function for channel name """
         return self._data['name']
 
     def filter_state(self):
@@ -177,6 +177,11 @@ class ChannelTableModel(QtCore.QAbstractTableModel):
     def baselines(self):
         """ getter function for baseline values """
         return self._data['base']
+    
+    def corrections(self):
+        """ getter function for correction values """
+        return self._data['corr']
+    
     
     def tolerances(self):
         """ getter function for tolerance for unlock filter """

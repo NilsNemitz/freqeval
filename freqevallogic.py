@@ -34,6 +34,9 @@ class SelectedPoints(object):
 class FreqEvalLogic(object):
     """program logic class for frequency evaluation program"""
 
+    BLACK = QColor('Black')
+    GRAY = QColor('DarkGray')
+
     def __init__(self, gui):
         super().__init__()
         self.gui = gui
@@ -43,15 +46,26 @@ class FreqEvalLogic(object):
         self._data_obj = None
         self._points = SelectedPoints() # initialize point selection storage
 
-        self.channel_color_list = (Gr.SEA, Gr.PURPLE, Gr.MAGENTA, Gr.RED)
+        self.channel_color_list = (
+            Gr.SEA, Gr.PURPLE, Gr.MAGENTA, Gr.RED, 
+            Gr.ORANGE, Gr.YELLOW, Gr.GREEN
+            )
+        self.evaluation_color_list = (
+            Gr.ORANGE, Gr.YELLOW, Gr.GREEN,
+            Gr.SEA, Gr.PURPLE, Gr.MAGENTA, Gr.RED, 
+            )
+        self.channel_ceo = 1
+        self.channel_rep = 2
         self.num_channels = 4
-        self.num_evaluations = 2
+        self.num_evaluations = 3
 
         self.eval_config = configparser.ConfigParser()
         self.eval_config['CONFIG']={
             'channels':str(self.num_channels),
             'outlier_threshold':'5',
-            'evaluations':str(self.num_evaluations)            
+            'evaluations':str(self.num_evaluations),
+            'ceo_channel':str(self.channel_ceo),
+            'rep_channel':str(self.channel_rep)
         }
         for index in range(self.num_channels):
             section = 'CHANNEL{:d}'.format(index+1)
@@ -67,23 +81,50 @@ class FreqEvalLogic(object):
             self.eval_config[section]['correction'] = '0'
             self.eval_config[section]['adev_reference'] = '1'
 
+        for index in range(self.num_evaluations):
+            section = 'EVALUATION{:d}'.format(index+1)
+            if not section in self.eval_config:
+                self.eval_config[section]={}
+            string = 'eval {:d}'.format(index+1)
+            self.eval_config[section]['name'] = string
+            index_w_offset = index+self.num_channels
+            self.eval_config[section]['color'] = self.channel_color_list[index_w_offset].name()
+            self.eval_config[section]['show'] = 'yes'            
+            self.eval_config[section]['type'] = 'absolute'
+            self.eval_config[section]['main_comb_line'] = '1234567'
+            self.eval_config[section]['main_beat_channel'] = '3'
+            self.eval_config[section]['ref_comb_line'] = '0'
+            self.eval_config[section]['ref_beat_channel'] = '0'
+            self.eval_config[section]['rep_rate_line'] = '4'
+            self.eval_config[section]['rep_rate_channel'] = '2'
+            self.eval_config[section]['target'] = '123123123123123.1234'
+
         print("reading default config file")
         self.eval_config.read('default.cfg')
 
+        self.channel_ceo = self.eval_config['CONFIG'].getint('ceo_channel', 1)
+        self.channel_rep = self.eval_config['CONFIG'].getint('rep_channel', 1)
+        print("CEO / rep channels: ",self.channel_ceo," / ",self.channel_rep)
+        
         # logic class tracks table models and makes them available as needed
         self.channel_table = ChannelTableModel(None, self)
         self.num_channels = self.channel_table.set_from_config(self.eval_config)
-        print("now ",self.num_channels," known.")
+        print("now ",self.num_channels," channels known.")
         
         self.evaluation_table = EvaluationTableModel(None, self)
+        self.num_evaluations = self.evaluation_table.set_from_config(self.eval_config)
+        print("now ",self.num_evaluations," evaluations known.")
+        
         self.adev_table = ChannelADevTableModel(None, self)
 
         print("trying to write back to config file")
         with open('default.cfg','w') as configfile:
             self.eval_config.write(configfile)
 
+        # initialize graph references, to be populated after logic start
         self._g1 = self._g2 = None
         self._pa1 = self._pa2 = self._pa3 = self._pa4 = None
+        self._pb1 = self._pb2 = None
 
 
     def init_graphs(self):
@@ -314,8 +355,16 @@ class FreqEvalLogic(object):
     def set_channel_color_list(self, clist):
         length = len(clist)
         self.channel_color_list = [QColor(colorstring) for colorstring in clist]
-        for color in self.channel_color_list:
-            print("color ",color.name())        
+        #for color in self.channel_color_list:
+        #    print("color ",color.name())        
+
+    ###############################################################################################
+    def set_evaluation_color_list(self, clist):
+        length = len(clist)
+        self.evaluation_color_list = [QColor(colorstring) for colorstring in clist]
+        #for color in self.channel_color_list:
+        #    print("color ",color.name())        
+
 
 ###################################################################################################
 if __name__ == '__main__':

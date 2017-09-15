@@ -186,7 +186,6 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             if not filter_channels[index]:
                 continue
             print("outlier filter on channel ", index)
-        
             meanlist = np.zeros(splits)
             varlist = np.zeros(splits)
             col_idx = COL.COLS[index]

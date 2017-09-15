@@ -9,7 +9,6 @@ Created on 2017/09/03
 # py#lint: disable=locally-disabled, redefined-variable-type
 # pylint: disable=locally-disabled, too-many-instance-attributes
 
-
 # import sys
 
 import os
@@ -23,9 +22,9 @@ from PyQt5.QtWidgets import ( # pylint: disable=locally-disabled, no-name-in-mod
     QFrame, QLabel, QTableView,
     #qApp,
     QFileDialog,
-    # QPushButton,
     QAction,
-    QHBoxLayout, QVBoxLayout,
+    #QHBoxLayout,
+    QVBoxLayout,
     #QGridLayout,
     QSplitter, QScrollArea,
     QSizePolicy
@@ -43,13 +42,10 @@ from freqevallogic import FreqEvalLogic
 
 class FreqEvalMain(QMainWindow):
     """main class widget for comb counter readout program"""
-
     def __init__(self, app):
         super().__init__()
         self.app = app
         self.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(logo()))) # pylint: disable=locally-disabled, no-member
-        #self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint) # pylint: disable=locally-disabled, no-member
-        #self.setWindowFlags(self.windowFlags()) # pylint: disable=locally-disabled, no-member
         self._settings = QSettings('freqeval.ini', QSettings.IniFormat)
         self._settings.setFallbacksEnabled(False)
         # configuration constants
@@ -60,12 +56,22 @@ class FreqEvalMain(QMainWindow):
         self.init_state() # code in init_state has access to logic already
         self._base_path = self._settings.value('basepath', "")
 
-
     ###############################################################################
     def show_msg_not_implemented(self, qval):
         """show dialog indicating not-yet-implemented feature"""
         del qval
         QMessageBox.about(self, "Not implemented", "This function is not yet implemented.")
+
+    ###############################################################################
+    def redraw(self, qval):
+        """ manually trigger window redraw """
+        del qval
+        print("forced redraw")
+        self._channel_table_view.update()
+        self._graph_widget.update()
+        #self._channel_table_view.refresh()
+        self._graph_widget.refresh()
+        self._main_widget.refresh()
 
     ###############################################################################
     def select_data_file(self, qval):
@@ -95,7 +101,7 @@ class FreqEvalMain(QMainWindow):
             QMessageBox.about(self, "Report generation", "Report generation failed.")
         elif status == 0:
             QMessageBox.about(
-                self, "Report generation", 
+                self, "Report generation",
                 "Report was successfully generated and saved along with current configuration."
             )
 
@@ -105,15 +111,19 @@ class FreqEvalMain(QMainWindow):
         del qval
         status = self._logic.save_default_config()
         if status == -1:
-            QMessageBox.about(self, "Configuration", "Updating default configuration file failed.")
+            QMessageBox.about(
+                self, "Configuration",
+                "Updating default configuration file failed."
+            )
         if status == 0:
-            QMessageBox.about(self, "Configuration", "Default configuration file has been updated with current settings.")
-
+            QMessageBox.about(
+                self, "Configuration",
+                "Default configuration file has been updated with current settings."
+            )
 
     ###############################################################################
     def init_gui(self):
         """initialize and load basic settings for UI"""
-
         self.setWindowTitle('Frequency Evaluation for Comb Count')
         self.resize(self._settings.value('windowsize', QtCore.QSize(270, 225))) # pylint: disable=locally-disabled, no-member
         self.move(self._settings.value('windowposition', QtCore.QPoint(50, 50))) # pylint: disable=locally-disabled, no-member
@@ -170,27 +180,20 @@ class FreqEvalMain(QMainWindow):
         zoom_good_act.setStatusTip('Zoom in to show only good data')
         zoom_good_act.triggered.connect(self.show_msg_not_implemented)
 
+        redraw_act = QAction('&Redraw', self)
+        redraw_act.setShortcut('Ctrl+R')
+        redraw_act.setStatusTip('Redraw window')
+        redraw_act.triggered.connect(self.redraw)
+
         mask_menu = menubar.addMenu('&View')
         mask_menu.addAction(view_all_act)
         mask_menu.addAction(zoom_good_act)
+        mask_menu.addAction(redraw_act)
 
         #self.settings.setValue('windowposition', self.pos())
         #self.settings.setValue('windowsize', self.size())
-
-        #self._head_label = QLabel("Frequencies (Hz)")
-        #self._head_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        #self._head_label.setStyleSheet('font: 16pt;')
-        #self._lag_label = QLabel("+000 ms lag")
-        #self._lag_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        #self._head_size_label = QLabel("Size: ")
-        #self._head_size_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-
         #self._size_combo = QComboBox()
         #self._size_combo.addItem("18 pt", 18)
-        #self._size_combo.addItem("24 pt", 24)
-        #self._size_combo.addItem("36 pt", 36)
-        #self._size_combo.addItem("52 pt", 52)
-        #self._size_combo.addItem("72 pt", 72)
         #self._size_combo.addItem("100 pt", 100)
         #self._size_combo.setCurrentIndex(-1)
         #self._size_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -203,7 +206,7 @@ class FreqEvalMain(QMainWindow):
         graph1 = pg.GraphicsView()
         graph1.setCentralItem(self.graph1_layout)
 
-        ### sub-frame for ADev graph (mid left) ###
+        ### sub-frame for ADev graph (bottom region) ###
         self.graph2_layout = pg.GraphicsLayout()
         self.graph2_layout.setSpacing(0.)
         self.graph2_layout.setContentsMargins(0., 10., 0., 0.)
@@ -218,16 +221,16 @@ class FreqEvalMain(QMainWindow):
         evaluation_table_title_label = QLabel("Evaluation settings and results")
         evaluation_table_title_label.setStyleSheet("font-weight: bold;")
 
-        ### table for evaluation parameter input
-        ### will move to a config screen later
+        row_height = 24
+        ### table for channel parameters
         self._channel_table_view = QTableView()
         self._channel_table_view.setModel(self._logic.channel_table)
         self._channel_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._channel_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         vertical_header = self._channel_table_view.verticalHeader()
         vertical_header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
-        vertical_header.setMaximumSectionSize(22)
-        vertical_header.setDefaultAlignment(Qt.AlignCenter)
+        vertical_header.setMaximumSectionSize(row_height)
+        #vertical_header.setDefaultAlignment(Qt.AlignCenter)
         self._channel_table_view.resizeRowsToContents()
         self._channel_table_view.resizeColumnsToContents()
         vheader = self._channel_table_view.verticalHeader()
@@ -245,40 +248,46 @@ class FreqEvalMain(QMainWindow):
         self._adev_table_view.verticalHeader().hide()
         self._adev_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._adev_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        vheader = self._adev_table_view.verticalHeader()
+        #hheader = self._adev_table_view.horizontalHeader()
+        vheader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
+        vheader.setMaximumSectionSize(row_height)
         self._adev_table_view.resizeRowsToContents()
         self._adev_table_view.resizeColumnsToContents()
-        vheader = self._adev_table_view.verticalHeader()
-        hheader = self._adev_table_view.horizontalHeader()
-        self._adev_table_view.setFixedHeight(vheader.length()+hheader.height()+2)
+        self._adev_table_view.setFixedHeight(vheader.length()+2)
         #self._ch_adev_table_view.setFixedSize(
         #    hheader.length()+vheader.width()+2,
         #    vheader.length()+hheader.height()+2
         #    )
-        # self._ch_adev_table_view.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._adev_table_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        ### table for evaluation parameter input
+        ### table for evaluation parameters and results
         self._evaluation_table_view = QTableView()
         self._evaluation_table_view.setModel(self._logic.evaluation_table)
         self._evaluation_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._evaluation_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._evaluation_table_view.setStyleSheet("item::padding: 20px")
-        self._evaluation_table_view.show()
-
+        hheader = self._evaluation_table_view.horizontalHeader()
+        hheader.hide()
+        vheader = self._evaluation_table_view.verticalHeader()
+        vheader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
+        vheader.setMaximumSectionSize(row_height)
         self._evaluation_table_view.resizeRowsToContents()
+        self._evaluation_table_view.setRowHeight(4, 5)
+        self._evaluation_table_view.setRowHeight(8, 5)
+        self._evaluation_table_view.setRowHeight(11, 5)
+        self._evaluation_table_view.setRowHeight(16, 5)
         self._evaluation_table_view.resizeColumnsToContents()
         vheader = self._evaluation_table_view.verticalHeader()
         hheader = self._evaluation_table_view.horizontalHeader()
         self._evaluation_table_view.setMinimumSize(
             hheader.length()+vheader.width()+2,
-            vheader.length()+hheader.height()+2
+            vheader.length()+2
             )
         self._evaluation_table_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         ### full size frame to hold the evaluation results
         results_frame = QFrame()
         results_frame.setContentsMargins(0, 0, 0, 0)
-        #results_frame.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         results_frame_layout = QVBoxLayout(results_frame)
         results_frame_layout.addWidget(channel_table_title_label)
         results_frame_layout.addWidget(self._channel_table_view)
@@ -299,20 +308,6 @@ class FreqEvalMain(QMainWindow):
         scroll_area.setMinimumWidth(width1 + width2)
         # extend width so that vertical bar does not overlap
 
-        ### combined sub-frame for Adev graph / results / options ###
-        graph_option_frame = QFrame()
-        graph_option_frame.setContentsMargins(0, 0, 0, 0)
-        graph_option_frame.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
-        graph_option_frame.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Ignored)
-        graph_option_frame_layout = QHBoxLayout(graph_option_frame)
-        graph_option_frame_layout.setContentsMargins(0, 0, 0, 0)
-        graph_option_frame_layout.addWidget(scroll_area)
-        graph_option_frame_layout.addWidget(graph2)
-
-        # p1_head_hbox_layout.addWidget(self._head_label)
-        #p1_head_hbox_layout.addWidget(self._lag_label)
-        # p1_head_hbox_layout.addWidget(self._head_size_label)
-        #p1_head_hbox_layout.addWidget(self._size_combo)
         #self._freq_box = []
         #for i in range(self._freq_box_number):
         #    self._freq_box.append(FrequencyBox(i))
@@ -331,25 +326,6 @@ class FreqEvalMain(QMainWindow):
         #self.log_text.setStyleSheet('font: 8pt "Consolas";')
         #self.log_text.setWordWrapMode(QTextOption.NoWrap)
 
-        #fxe_connect_button.clicked.connect(self.connect_button_clicked)
-        #self.fxe_device_label = QLabel("device: xxx")
-        #fxe_mode_label = QLabel("measurement mode:")
-        #self._fxe_mode_combo = QComboBox()
-        #self._fxe_mode_combo.addItem(" \N{GREEK CAPITAL LETTER PI}    100 ms")
-        #self._fxe_mode_combo.addItem(" \N{GREEK CAPITAL LETTER PI}  1000 ms")
-        #self._fxe_mode_combo.addItem(" \N{GREEK CAPITAL LETTER LAMDA}    100 ms")
-        #self._fxe_mode_combo.addItem(" \N{GREEK CAPITAL LETTER LAMDA}  1000 ms")
-        #self._fxe_mode_combo.setCurrentIndex(-1)
-        #self._fxe_mode_combo.currentIndexChanged.connect(self.fxe_mode_combo_changed)
-        #self.fxe_sync_button = QPushButton("manual sync", self)
-        #self.fxe_sync_button.clicked.connect(self.sync_button_clicked)
-        #self._fxe_autosync_check = QCheckBox("sync at UTC 0:00:00")
-        #self.fxe_connected_label = QLabel("\N{WARNING SIGN} disconnected")
-        #self.fxe_connected_label.setContentsMargins(3, 5, 3, 5)
-        #self.fxe_connected_label.setStyleSheet(
-        #    "background-color: darkRed; color: white; font-weight: bold;"
-        #)
-
         #disp_head_label = QLabel("display settings")
         #disp_head_label.setStyleSheet("font-weight: bold;")
         #self.disp_radio_freq = QRadioButton("frequencies")
@@ -361,51 +337,24 @@ class FreqEvalMain(QMainWindow):
         #disp_interval_label = QLabel("measure frequency over:")
         #self._disp_avg_combo = QComboBox()
         #self._disp_avg_combo.addItem("integrate 0.1 s")
-        #self._disp_avg_combo.addItem("integrate 0.3 s")
-        #self._disp_avg_combo.addItem("integrate   1 s")
         #self._disp_avg_combo.addItem("integrate   3 s")
         #self._disp_avg_combo.setCurrentIndex(-1)
         #self._disp_avg_combo.currentIndexChanged.connect(self.disp_combo_changed)
 
-        #labrad_head_label = QLabel("LabRAD configuration")
-        #labrad_head_label.setStyleSheet("font-weight: bold;")
-        #self._labrad_manager_line = QLineEdit("123.123.123.123:1234")
-        #self._labrad_manager_line.setInputMask("000.000.000.000:0000;_")
-        #self._labrad_manager_line.setMaxLength(22)
-        #self._labrad_manager_line.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        #labrad_connected_label = QLabel("\N{WARNING SIGN} disconnected")
-        #labrad_connected_label.setContentsMargins(3, 5, 3, 5)
-        #labrad_connected_label.setStyleSheet(
-        #    "background-color: darkRed; color: white; font-weight: bold;"
-        #)
-        #labrad_connected_label.setContentsMargins(3, 5, 3, 5)
-
-        #store_head_label = QLabel("storage")
-        #store_head_label.setStyleSheet("font-weight: bold;")
-        #self._store_phase_file_check = QCheckBox("stream to phase file")
-        #self._store_freq_file_check = QCheckBox("stream to frequency file")
-        #self._store_labrad_check = QCheckBox("stream to LabRAD")
-        #self._store_button = QPushButton("store data", self)
-        #self._store_button.setCheckable(True)
-        #self._store_active_label = QLabel("\N{WARNING SIGN} deactivated")
-        #self._store_active_label.setContentsMargins(3, 5, 3, 5)
-        #self._store_active_label.setStyleSheet(
-        #    "background-color: darkRed; color: white; font-weight: bold;"
-        #)
         #########################################################################
         # overall layout:
-        main_widget = QSplitter(Qt.Vertical)
-        main_widget.addWidget(graph1)
-        main_widget.addWidget(graph_option_frame)
-        #main_vbox_layout = QVBoxLayout(main_widget)
-        #main_vbox_layout.setContentsMargins(0, 0, 0, 0)
-        #main_vbox_layout.addWidget(graph1)
-        #main_vbox_layout.addWidget(graph1_frame)
-        #main_vbox_layout.addWidget(graph_option_frame)
-        #main_vbox_layout.addWidget(menu_frame)
-        main_widget.setStretchFactor(0, 3)
-        main_widget.setStretchFactor(1, 1)
-        self.setCentralWidget(main_widget)
+        self._graph_widget = QSplitter(Qt.Vertical)
+        self._graph_widget.addWidget(graph1)
+        self._graph_widget.addWidget(graph2)
+        self._graph_widget.setStretchFactor(0, 3)
+        self._graph_widget.setStretchFactor(1, 1)
+
+        self._main_widget = QSplitter(Qt.Horizontal)
+        self._main_widget.addWidget(scroll_area)
+        self._main_widget.addWidget(self._graph_widget)
+        self._main_widget.setStretchFactor(0, 0)
+        self._main_widget.setStretchFactor(1, 1)
+        self.setCentralWidget(self._main_widget)
 
     def init_state(self):
         """ initialize remaining settings after logic has started """
