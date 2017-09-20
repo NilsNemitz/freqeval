@@ -9,6 +9,7 @@ Created on 2017/09/04
 # py#lint: disable=locally-disabled, redefined-variable-type
 # pylint: disable=locally-disabled, too-many-instance-attributes
 
+import os.path
 import configparser
 import pyqtgraph_core as pg
 from PyQt5.QtGui import QColor # pylint: disable=locally-disabled, no-name-in-module
@@ -58,11 +59,14 @@ class FreqEvalLogic(object):
         self.channel_rep = 2
         self.num_channels = 4
         self.num_evaluations = 3
+        self.overhangs = [1, 10] # points marked bad before/after "out-of-band" point
+        self.threshold = 10
+
 
         self.eval_config = configparser.ConfigParser()
         self.eval_config['CONFIG']={
             'channels':str(self.num_channels),
-            'outlier_threshold':'5',
+            'outlier_threshold':str(self.threshold), 
             'evaluations':str(self.num_evaluations),
             'ceo_channel':str(self.channel_ceo),
             'rep_channel':str(self.channel_rep)
@@ -110,6 +114,8 @@ class FreqEvalLogic(object):
 
         self.channel_ceo = self.eval_config['CONFIG'].getint('ceo_channel', 1)
         self.channel_rep = self.eval_config['CONFIG'].getint('rep_channel', 1)
+        self.outlier_threshold = self.eval_config['CONFIG'].getfloat('outlier_threshold', 2)
+
         print("CEO / rep channels: ",self.channel_ceo," / ",self.channel_rep)
         
         # logic class tracks table models and makes them available as needed
@@ -193,69 +199,6 @@ class FreqEvalLogic(object):
     ###############################################################################################
     def plot_time_series(self):
         """ update graphs of time series data """
-        good = self._data_obj.get_good_points()
-        mskd = self._data_obj.get_mskd_points()
-        rej1 = self._data_obj.get_rej1_points()
-        rej2 = self._data_obj.get_rej2_points()
-        rej3 = self._data_obj.get_rej3_points()
-        print("types: ", len(good), " ", len(mskd), " ", len(rej1), " ", len(rej2), " ", len(rej3))
-
-        baselines = self.channel_table.baselines()
-
-        sc_a1 = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
-        sc_a1.addPoints(pos=rej1[:, (COL.TIME, COL.CH1)], brush=Gr.BROWN)
-        sc_a1.addPoints(pos=rej2[:, (COL.TIME, COL.CH1)], brush=Gr.ORANGE)
-        sc_a1.addPoints(pos=rej3[:, (COL.TIME, COL.CH1)], brush=Gr.YELLOW)
-        # keep the good points in there own plot object, prevents disappearance
-        sc_a1_m = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
-        sc_a1_m.addPoints(pos=good[:, (COL.TIME, COL.CH1)], brush=Gr.BLUE)
-
-        labelstring = "CH 1 (Hz)<br>-"+str(baselines[0]/1000000)+" MHz<br>"
-        self._pa1.clear()
-        self._pa1.addItem(sc_a1)
-        self._pa1.addItem(sc_a1_m)
-        labelstyle = {'color': Gr.CH_COLS[0].name(), 'font-size': '10pt'}
-        self._pa1.setLabel('left', text=labelstring, units=None, unitPrefix=None, **labelstyle)
-
-        sc_a2 = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
-        sc_a2.addPoints(pos=rej1[:, (COL.TIME, COL.CH2)], brush=Gr.BROWN)
-        sc_a2.addPoints(pos=rej2[:, (COL.TIME, COL.CH2)], brush=Gr.ORANGE)
-        sc_a2.addPoints(pos=rej3[:, (COL.TIME, COL.CH2)], brush=Gr.YELLOW)
-        sc_a2_m = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
-        sc_a2_m.addPoints(pos=good[:, (COL.TIME, COL.CH2)], brush=Gr.BLUE)
-        labelstyle = {'color': Gr.CH_COLS[1].name(), 'font-size': '10pt'}
-        labelstring = "CH 2 (Hz)<br>-"+str(baselines[1]/1000000)+" MHz<br>"
-        self._pa2.clear()
-        self._pa2.addItem(sc_a2)
-        self._pa2.addItem(sc_a2_m)
-        self._pa2.setLabel('left', text=labelstring, units=None, unitPrefix=None, **labelstyle)
-
-        sc_a3 = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
-        sc_a3.addPoints(pos=rej1[:, (COL.TIME, COL.CH3)], brush=Gr.BROWN)
-        sc_a3.addPoints(pos=rej2[:, (COL.TIME, COL.CH3)], brush=Gr.ORANGE)
-        sc_a3.addPoints(pos=rej3[:, (COL.TIME, COL.CH3)], brush=Gr.YELLOW)
-        sc_a3_m = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
-        sc_a3_m.addPoints(pos=good[:, (COL.TIME, COL.CH3)], brush=Gr.BLUE)
-        labelstyle = {'color': Gr.CH_COLS[2].name(), 'font-size': '10pt'}
-        labelstring = "CH 3 (Hz)<br>-"+str(baselines[2]/1000000)+" MHz<br>"
-        self._pa3.clear()
-        self._pa3.addItem(sc_a3)
-        self._pa3.addItem(sc_a3_m)
-        self._pa3.setLabel('left', text=labelstring, units=None, unitPrefix=None, **labelstyle)
-
-        sc_a4 = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
-        sc_a4.addPoints(pos=rej1[:, (COL.TIME, COL.CH4)], brush=Gr.BROWN)
-        sc_a4.addPoints(pos=rej2[:, (COL.TIME, COL.CH4)], brush=Gr.ORANGE)
-        sc_a4.addPoints(pos=rej3[:, (COL.TIME, COL.CH4)], brush=Gr.YELLOW)
-        sc_a4_m = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
-        sc_a4_m.addPoints(pos=good[:, (COL.TIME, COL.CH4)], brush=Gr.BLUE)
-        labelstyle = {'color': Gr.CH_COLS[3].name(), 'font-size': '10pt'}
-        labelstring = "CH 4 (Hz)<br>-"+str(baselines[3]/1000000)+" MHz<br>"
-        self._pa4.clear()
-        self._pa4.addItem(sc_a4)
-        self._pa4.addItem(sc_a4_m)
-        self._pa4.setLabel('left', text=labelstring, units=None, unitPrefix=None, **labelstyle)
-
         def clicked(plot, points):
             """ callback function to handle point selection """
             del plot
@@ -274,14 +217,36 @@ class FreqEvalLogic(object):
                 "clicked point at ", self._points.point_a.pos(),
                 " set time to ", self._points.time_a
                 )
-        sc_a1.sigClicked.connect(clicked)
-        sc_a2.sigClicked.connect(clicked)
-        sc_a3.sigClicked.connect(clicked)
-        sc_a4.sigClicked.connect(clicked)
-        sc_a1_m.sigClicked.connect(clicked)
-        sc_a2_m.sigClicked.connect(clicked)
-        sc_a3_m.sigClicked.connect(clicked)
-        sc_a4_m.sigClicked.connect(clicked)
+
+        baselines = self.channel_table.baselines()
+        plots = [self._pa1, self._pa2, self._pa3, self._pa4]
+        for ch_index in range(COL.CHANNELS):
+            #print('plotting channel ',ch_index+1,' data.')
+            # get good data for channel
+            good = self._data_obj.get_good_points([ch_index])
+            #print('number of good points:', good.shape)
+            mskd = self._data_obj.get_mskd_points(ch_index)
+            #print('selection for masked points:' ,mskd)
+            rej1 = self._data_obj.get_rej1_points(ch_index)
+            #print('selection for rejected points:' ,rej1)
+            rej2 = self._data_obj.get_rej2_points(ch_index)
+            # TODO: move initializaion of scatter plot items to GUI code, only remove/add points here
+            sc_rej = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
+            sc_rej.addPoints(pos=rej1, brush=Gr.YELLOW)
+            sc_rej.addPoints(pos=rej2, brush=Gr.ORANGE)
+            sc_rej.addPoints(pos=mskd, brush=Gr.RED)
+            sc_rej.sigClicked.connect(clicked)        
+            # keep the good points in there own plot object, prevents disappearance
+            sc_good = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
+            sc_good.addPoints(pos=good, brush=Gr.BLUE)
+            sc_good.sigClicked.connect(clicked)
+
+            labelstring = "CH "+str(ch_index+1)+"1 (Hz)<br>-"+str(baselines[ch_index]/1000000)+" MHz<br>"
+            plots[ch_index].clear()
+            plots[ch_index].addItem(sc_rej)
+            plots[ch_index].addItem(sc_good)
+            labelstyle = {'color': Gr.CH_COLS[ch_index].name(), 'font-size': '10pt'}
+            plots[ch_index].setLabel('left', text=labelstring, units=None, unitPrefix=None, **labelstyle)
 
 
     ###############################################################################################
@@ -327,18 +292,38 @@ class FreqEvalLogic(object):
     ###############################################################################################
     def open_data_file(self, filename):
         """ load data from file, trigger eval and redraw """
-        print("load file ",filename)
+        outstring = "loading file "+ filename
+        self.gui.set_status(outstring)
         new_data = DataHandler(self)
         loaded_values = new_data.load_file(filename)
-        print("loaded ",loaded_values," values per channel.")
+        outstring = "loaded "+str(loaded_values)+" values per channel."
+        print(outstring)
+        self.gui.set_status(outstring)
         if loaded_values > 1:
             self._data_obj = new_data
             self._filename = filename
-
-        self.plot_time_series()
         
+        path, ext = os.path.splitext(filename)
+        maskfile = path+'.msk'
+        print('mask file candidate:',maskfile)
+
+        outstring = "checking for mask file "+maskfile
+        self.gui.set_status(outstring)
+        retval = self._data_obj.load_maskfile(maskfile)
+        if retval:
+            print("mask file exists")
+        else:
+            print("mask file does not exist")
+
+        self.gui.set_status("filtering data")
+        self._data_obj.filter_data(self.overhangs, self.outlier_threshold)
+
+        self.gui.set_status("plotting data")
+        self.plot_time_series()        
+        self.gui.set_status("calculating Allan deviations")
         adev_obj = self._data_obj.channel_adev()
         self.plot_channel_adev(adev_obj)
+        self.gui.set_status("ok")        
 
     ###############################################################################################
     def save_report(self):
