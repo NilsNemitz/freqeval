@@ -24,24 +24,27 @@ from PyQt5.QtCore import Qt as QtC # pylint: disable=locally-disabled, no-name-i
 class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locally-disabled, no-member
     """ adjust handling of data in evaluation matrix/table """
 
-    ROW_NUMBER = 17
+    ROW_NUMBER = 19
     ROW_HEADER = (
         "",
-        "main line: n_a",
-        "ref. line: n_b",
-        "rep. rate: n_r",
+        "main  n_a",
+        "ref.  n_b",
+        "rep.  n_r",
         "",
-        "line ratio a/b",
+        "line ratio",
         "baseline freq.",
         "relative",
         "",
+        "multiplier",
+        "syst. cor.",
         "result",
-        "uncertainty",
+        "stat. unc.",
+        "syst. unc.",
         "",
         "target",
         "deviation",
-        "fractional dev",
-        "fractional unc",
+        "fract. dev.",
+        "fract. unc.",
         ""
         )
 
@@ -70,23 +73,42 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             else:
                 new_dict['type'] = -1
                 print("ET.set_from_config: Unknown type specification: ", evaltype)
+            del evaltype
 
             line_index = config[section].getint('main_comb_line', 1)
+            reference = config[section].get('main_reference', '12345678901234567890')
+            sys_cor = config[section].get('main_sys_cor','0.000')
+            sys_unc = config[section].get('main_sys_unc','0.000')
             new_dict['n_a'] = dec.Decimal(line_index)
             new_dict['ch_a'] = config[section].getint('main_beat_channel', 1)
+            new_dict['ref_a'] = dec.Decimal(reference) # store as arbitrary precision
+            new_dict['sys_cor_a'] = dec.Decimal(sys_cor)            
+            new_dict['sys_unc_a'] = dec.Decimal(sys_unc)            
 
             line_index = config[section].getint('ref_comb_line', 1)
+            reference = config[section].get('ref', '12345678901234567890')
+            sys_cor = config[section].get('main_sys_cor','0.000')
+            sys_unc = config[section].get('main_sys_unc','0.000')
+            reference = config[section].get('ref_reference', '12345678901234567890')
             new_dict['n_b'] = dec.Decimal(line_index)
             new_dict['ch_b'] = config[section].getint('ref_beat_channel', 1)
+            new_dict['sys_cor_b'] = dec.Decimal(sys_cor)            
+            new_dict['sys_unc_b'] = dec.Decimal(sys_unc)            
+            new_dict['ref_b'] = dec.Decimal(reference) # store as arbitrary precision
 
             line_index = config[section].getint('rep_rate_line', 1)
             new_dict['n_r'] = dec.Decimal(line_index)
+            del line_index
+            del reference
+            del sys_cor
+            del sys_unc
             new_dict['ch_r'] = config[section].getint('rep_rate_channel', 1)
+            new_dict['show'] = config[section].getboolean('show', True)
 
-            target = config[section].get('target', '123456789012345667890')
-            targetval = dec.Decimal(target) # store as arbitrary precision
-            new_dict['target'] = targetval
-
+            multiplier = config[section].get('multiplier', 1) # direct to Decimal
+            new_dict['multiplier'] = dec.Decimal(multiplier)
+            del multiplier
+            
             # calculate derived quantities
 
             baselines = self._logic.channel_table.baselines()
@@ -97,8 +119,14 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             n_a = new_dict['n_a']
             n_b = new_dict['n_b']
             n_r = new_dict['n_r']
-            target = new_dict['target']
-
+            multiplier = new_dict['multiplier']
+            ref_a = new_dict['ref_a']
+            sys_cor_a = new_dict['sys_cor_a']
+            sys_unc_a = new_dict['sys_unc_a']
+            ref_b = new_dict['ref_b']            
+            sys_cor_b = new_dict['sys_cor_b']
+            sys_unc_b = new_dict['sys_unc_b']
+            
             #  define baselines as full precision decimals:
             if ch_ceo > 0:
                 base_ceo = dec.Decimal(int(+baselines[+ch_ceo-1]))
@@ -107,10 +135,12 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
                 base_ceo = dec.Decimal(int(-baselines[-ch_ceo-1]))
                 corr_ceo = dec.Decimal(int(-corrections[-ch_ceo-1]))
             base_ceo += corr_ceo
+            del corr_ceo
 
             base_rep = dec.Decimal(int(baselines[ch_rep-1]))
             corr_rep = dec.Decimal(int(corrections[ch_rep-1]))
             base_rep += corr_rep
+            del corr_rep
 
             if ch_beat > 0:
                 base_beat = dec.Decimal(int(+baselines[+ch_beat-1]))
@@ -119,45 +149,80 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
                 base_beat = dec.Decimal(int(-baselines[-ch_beat-1]))
                 corr_beat = dec.Decimal(int(-corrections[-ch_beat-1]))
             base_beat += corr_beat
+            del corr_beat
+            del baselines
+            del corrections
 
             relative = dec.Decimal(0) # gets filled in later
+            # TODO: should be NaN until filled
 
             if new_dict['type'] == 1: # absolute frequency mode
                 r_ab = n_a/n_r
                 base_freq = base_ceo + (n_a/n_r) * base_rep + base_beat
-                result = base_freq + relative
-                uncert = dec.Decimal(1)
+                print("base_freq value: ",base_freq)
+                print("base_freq object: ",repr(base_freq))
+                print("multiplier value: ",multiplier)
+                print("multiplier object: ",repr(multiplier))
+                base_freq = multiplier * base_freq # scaling for Indium clock
+                sys_cor = sys_cor_a # direct correction for systematic effects
+                sys_unc = sys_unc_a # direct correction for systematic effects
+                result = base_freq + relative + sys_cor
+                stat_unc = dec.Decimal(1)
+                target = ref_a
                 deviation = result - target
                 frac_dev = deviation / result
-                frac_unc = uncert / result
+                frac_unc = stat_unc / result                
             elif new_dict['type'] == 2: # frequency ratio mode
                 r_ab = n_a/n_b
+                r_ab *= multiplier
                 base_freq = dec.Decimal(0)
+                sys_cor = dec.Decimal('NaN')
+                sys_unc = dec.Decimal('NaN')
                 result = r_ab + relative
-                uncert = dec.Decimal(1E-15)
+                stat_unc = dec.Decimal(1E-15)
+                target = ref_a / ref_b
                 deviation = result - target
                 frac_dev = deviation / result
-                frac_unc = uncert / result
+                frac_unc = stat_unc / result
             else:
                 r_ab = dec.Decimal('NaN')
                 base_freq = dec.Decimal('NaN')
                 result = dec.Decimal('NaN')
-                uncert = dec.Decimal('NaN')
-                deviation = result - target
+                stat_unc = dec.Decimal('NaN')
+                deviation = dec.Decimal('NaN')
                 frac_dev = dec.Decimal('NaN')
                 frac_unc = dec.Decimal('NaN')
+                sys_corr = dec.Decimal('NaN')
+                sys_unc = dec.Decimal('NaN')
             print(
                 'f_ceo: ', repr(base_ceo),
                 '   f_rep: ', repr(base_rep),
                 '   f_freq: ', repr(base_freq),
                 '   decimals precision: ', dec.getcontext().prec
                 )
-
+            # calculation (particularly of ratio value) uses reference value
+            # in places where full accuracy is not required. 
+            # for ratio "relative" number, the correction term is of order 1E-7
+            # (40 MHz AOM shifts over 400 THz Sr optical frequency)
+            # a relative error of 1E-12 is therefore acceptable to achieve 1E-19
+            # accuracy. If.
+            if frac_dev > 1E-12:
+                new_dict['deviation_warning'] = True
+                num_string = '{:3.1E}'.format(frac_dev,3)
+                text = (
+                    'The current evaluation for ' + new_dict['name']
+                    + ' deviates by ' + num_string 
+                    + ' from reference value.\nResults will be inaccurate.' 
+                )
+                self._logic.warning('Deviation from reference', text)
             new_dict['r_ab'] = r_ab
             new_dict['base_freq'] = base_freq
             new_dict['relative'] = relative # gets filled in later
             new_dict['result'] = result # gets updated later
-            new_dict['uncert'] = uncert # gets filled in later
+            new_dict['uncert'] = stat_unc # gets filled in later
+            new_dict['sys_cor'] = sys_cor
+            new_dict['sys_unc'] = sys_unc
+            new_dict['target'] = target
             new_dict['deviation'] = deviation
             new_dict['frac_dev'] = frac_dev
             new_dict['frac_unc'] = frac_unc
@@ -197,6 +262,16 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             return None
         col = index.column()
         row = index.row()
+        
+        # number formatting for absolute frequency and ratio results
+        style_absolute = '{:24,.4f}'
+        style_ratio = '{:24,.19f}'
+        if self._data[col]['type'] == 1: # absolute frequency mode
+            style = style_absolute
+        elif self._data[col]['type'] == 2: # frequency ratio mode
+            style = style_ratio
+        else:
+            style = 'undefined'
 
         if row == 0:
             if role == QtC.DisplayRole:
@@ -209,15 +284,20 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
                 return self._logic.BLACK
             elif role == QtC.TextAlignmentRole:
                 return QtC.AlignCenter
+            elif role == QtC.CheckStateRole:
+                if( self._data[col]['show'] ):
+                    return(QtC.Checked)
+                else:
+                    return(QtC.Unchecked)
             return None
 
         if role == QtC.TextAlignmentRole:
             return QtC.AlignCenter | QtC.AlignRight
         elif role == QtC.BackgroundColorRole:
-            if row == 4 or row == 8 or row == 11 or row == 16:
+            divider_rows = [4,8,14,19]
+            if row in divider_rows:
                 color = self._logic.evaluation_color_list[col]
-                return color
-                # return self._logic.GRAY
+                return color                
         elif role != QtC.DisplayRole:
             return None
 
@@ -241,79 +321,115 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             )
         elif row == 5:
             value = self._data[col]['r_ab']
-            if self._data[col]['type'] == 1: # absolute frequency mode
-                string = '{:24,.4f}'.format(value)
-            elif self._data[col]['type'] == 2: # frequency ratio mode
-                string = '{:24.19f}'.format(value)
-            else:
-                string = 'undefined'
+            string = style.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = '{:24.19f}'.format(value)
+            #else:
+            #    string = 'undefined'
 
         elif row == 6:
             value = self._data[col]['base_freq']
+            string = style.format(value)
             if self._data[col]['type'] == 1: # absolute frequency mode
-                string = '{:24,.4f}'.format(value)
-            elif self._data[col]['type'] == 2: # frequency ratio mode
-                string = ''
+                string = style.format(value)
             else:
-                string = 'undefined'
+                string = ''
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = ''
+            #else:
+            #    string = 'undefined'
 
         elif row == 7:
             value = self._data[col]['relative']
-            if self._data[col]['type'] == 1: # absolute frequency mode
-                string = '{:24,.4f}'.format(value)
-            elif self._data[col]['type'] == 2: # frequency ratio mode
-                string = '{:24,.19f}'.format(value)
-            else:
-                string = 'undefined'
+            string = style.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = '{:24,.19f}'.format(value)
+            #else:
+            #    string = 'undefined'
 
         elif row == 9:
-            value = self._data[col]['result']
-            if self._data[col]['type'] == 1: # absolute frequency mode
-                string = '{:24,.4f}'.format(value)
-            elif self._data[col]['type'] == 2: # frequency ratio mode
-                string = '{:24,.19f}'.format(value)
-            else:
-                string = 'undefined'
+            value = self._data[col]['multiplier']
+            string = str(value)
 
         elif row == 10:
-            value = self._data[col]['uncert']
-            if self._data[col]['type'] == 1: # absolute frequency mode
-                string = '{:24,.4f}'.format(value)
-            elif self._data[col]['type'] == 2: # frequency ratio mode
-                string = '{:24,.19f}'.format(value)
-            else:
-                string = 'undefined'
+            value = self._data[col]['sys_cor']
+            string = style.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = '{:24,.19f}'.format(value)
+            #else:
+            #    string = 'undefined'
+
+        elif row == 11:
+            value = self._data[col]['result']
+            string = style.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = '{:24,.19f}'.format(value)
+            #else:
+            #    string = 'undefined'
 
         elif row == 12:
-            value = self._data[col]['target']
-            if self._data[col]['type'] == 1: # absolute frequency mode
-                string = '{:24,.4f}'.format(value)
-            elif self._data[col]['type'] == 2: # frequency ratio mode
-                string = ''
-            else:
-                string = 'undefined'
+            value = self._data[col]['uncert']
+            string = style.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = '{:24,.19f}'.format(value)
+            #else:
+            #    string = 'undefined'
 
         elif row == 13:
-            value = self._data[col]['deviation']
-            if self._data[col]['type'] == 1: # absolute frequency mode
-                string = '{:24,.4f}'.format(value)
-            elif self._data[col]['type'] == 2: # frequency ratio mode
-                string = ''
-            else:
-                string = 'undefined'
-
-        elif row == 14:
-            value = self._data[col]['frac_dev']
-            value = round(value, 19)
-            if self._data[col]['type'] == 1: # absolute frequency mode
-                #string = '{:24,.19f}'.format(value)
-                string = '{:E}'.format(value)
-            elif self._data[col]['type'] == 2: # frequency ratio mode
-                string = ''
-            else:
-                string = 'undefined'
+            value = self._data[col]['sys_unc']
+            string = style.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = '{:24,.19f}'.format(value)
+            #else:
+            #    string = 'undefined'
 
         elif row == 15:
+            value = self._data[col]['target']
+            string = style.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = '{:24,.19f}'.format(value)
+            #    #string = ''
+            #else:
+            #    string = 'undefined'
+
+        elif row == 16:
+            value = self._data[col]['deviation']
+            string = style.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    string = '{:24,.4f}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = ''
+            #else:
+            #    string = 'undefined'
+
+        elif row == 17:
+            value = self._data[col]['frac_dev']
+            value = round(value, 19)
+            string = '{:E}'.format(value)
+            #if self._data[col]['type'] == 1: # absolute frequency mode
+            #    #string = '{:24,.19f}'.format(value)
+            #    string = '{:E}'.format(value)
+            #elif self._data[col]['type'] == 2: # frequency ratio mode
+            #    string = ''
+            #else:
+            #    string = 'undefined'
+
+        elif row == 18:
             value = self._data[col]['frac_unc']
             value = round(value, 19)
             string = '{:E}'.format(value)

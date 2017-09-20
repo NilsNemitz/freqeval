@@ -91,13 +91,19 @@ class FreqEvalLogic(object):
             self.eval_config[section]['color'] = self.channel_color_list[index_w_offset].name()
             self.eval_config[section]['show'] = 'yes'            
             self.eval_config[section]['type'] = 'absolute'
+            self.eval_config[section]['multiplier'] = '1'            
             self.eval_config[section]['main_comb_line'] = '1234567'
             self.eval_config[section]['main_beat_channel'] = '3'
+            self.eval_config[section]['main_reference'] = '123123123123123.1234'
+            self.eval_config[section]['main_sys_cor'] = '0.200'
+            self.eval_config[section]['main_sys_unc'] = '0.100'            
             self.eval_config[section]['ref_comb_line'] = '0'
             self.eval_config[section]['ref_beat_channel'] = '0'
+            self.eval_config[section]['ref_reference'] = '123123123123123.1234'
+            self.eval_config[section]['ref_sys_cor'] = '0.400'
+            self.eval_config[section]['ref_sys_unc'] = '0.300'
             self.eval_config[section]['rep_rate_line'] = '4'
             self.eval_config[section]['rep_rate_channel'] = '2'
-            self.eval_config[section]['target'] = '123123123123123.1234'
 
         print("reading default config file")
         self.eval_config.read('default.cfg')
@@ -353,6 +359,7 @@ class FreqEvalLogic(object):
 
     ###############################################################################################
     def set_channel_color_list(self, clist):
+        """ update list of colors used for channel plots """
         length = len(clist)
         self.channel_color_list = [QColor(colorstring) for colorstring in clist]
         #for color in self.channel_color_list:
@@ -360,11 +367,18 @@ class FreqEvalLogic(object):
 
     ###############################################################################################
     def set_evaluation_color_list(self, clist):
+        """ update list of colors used for evaluation plots """
         length = len(clist)
         self.evaluation_color_list = [QColor(colorstring) for colorstring in clist]
         #for color in self.channel_color_list:
-        #    print("color ",color.name())        
+        #    print("color ",color.name())
 
+    ###############################################################################################
+    def warning(self, title, text):
+        """ allow warning messages to be posted by subroutines """
+        # TODO: pass off to GUI routines. Bundle all messages received during evaluation?
+        print(title)
+        print(text)        
 
 ###################################################################################################
 if __name__ == '__main__':

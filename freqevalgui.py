@@ -272,10 +272,8 @@ class FreqEvalMain(QMainWindow):
         vheader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
         vheader.setMaximumSectionSize(row_height)
         self._evaluation_table_view.resizeRowsToContents()
-        self._evaluation_table_view.setRowHeight(4, 5)
-        self._evaluation_table_view.setRowHeight(8, 5)
-        self._evaluation_table_view.setRowHeight(11, 5)
-        self._evaluation_table_view.setRowHeight(16, 5)
+        for divider_row in (4,8,14,19):
+            self._evaluation_table_view.setRowHeight(divider_row, 5)
         self._evaluation_table_view.resizeColumnsToContents()
         vheader = self._evaluation_table_view.verticalHeader()
         hheader = self._evaluation_table_view.horizontalHeader()
