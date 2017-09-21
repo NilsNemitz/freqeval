@@ -9,6 +9,7 @@ Created on Fri Jun  16
 # pylint: disable=locally-disabled, bare-except, too-few-public-methods
 # pylint: disable=locally-disabled, too-many-locals
 import math
+from datetime import datetime, timezone
 import pandas
 import numpy as np
 import allantools
@@ -43,10 +44,11 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         self._tday = 0
         self._tmin = 0
         self._baselines = [0] * 4
+        self.filename = None
 
     def load_file(self, filename):
         """load data from a frequency csv file"""
-        col_names = ['tstr', 'stat', 'time', 'frq1', 'frq2', 'frq3', 'frq4']
+        col_names = ['tstr', 'stat', 'time', 'frq1', 'frq2', 'frq3', 'frq4']        
         data_frame = pandas.read_csv(
             filename,
             #'C:\\d\prog\\data\\20170831 lock test\\freq_MJD_57997_edited.csv',
@@ -73,7 +75,11 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         # bits 16 - 23: global filter rejection flags (transfered from CEO and frep)
         # bits 24 - 31: mask indication, used to display manually rejected data
         npstatval = np.zeros(self._data.shape[0], dtype=np.uint32, order='C')
+        
+        # assume succesful load, updata data and filename
         self._data = np.c_[self._data, npstatval]
+        self.filename = filename
+        
         for row in self._data:
             if row[COL.STAT].strip() != 'GOOD':
                 row[COL.FLAG] = 1
@@ -97,8 +103,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         
         return len(self._data)
 
-
-
+    ########################################################################################
     def filter_data(self, overhangs, threshold):
         """ reset data filters (except mask) and re-apply """
         bitmask = 0xFF000000
@@ -121,98 +126,186 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             self._ch_adev_obj = new_adev_obj
 
 
+    ########################################################################################
     def load_maskfile(self, maskfile):
         """load data from a frequency csv file"""
-        col_names = ['chan', 'time', 'span']
+        col_names = ['chan','day', 'start', 'end']
         maskdata = pandas.read_csv(
             maskfile,
             header=0, names=col_names,
             engine='c',
             error_bad_lines=False,
             warn_bad_lines=True,
-            converters={"chan": lambda x: int(x, 16)}
+            parse_dates=['start','end'],
+            #dtype = ['int32', 'int32', 'string', 'string']#,
+            converters={"chan": lambda x: int(x, 2)}
         )
-
-        
+        for index in range(len(maskdata)):
+            # convert to timestamp relative to data reference point of previous UTC midnight
+            start_timestring = maskdata.ix[index, 'start']
+            try:
+                start_datetime = datetime.strptime(start_timestring.strip(), "%H:%M:%S")
+                start_datetime = start_datetime.replace( 
+                    tzinfo=timezone.utc, day=1, month=1, year=1970
+                )
+                start_timestamp = start_datetime.timestamp()
+                start_timestamp += maskdata.ix[index, 'day'] * 86400
+            except ValueError as error:
+                print("Conversion error: ",error)
+                start_timestamp = 0
+            maskdata.ix[index, 'start'] = start_timestamp
+            # start_datetime2 = datetime.utcfromtimestamp(start_timestamp + self._tmin)
+            
+            end_timestring = maskdata.ix[index, 'end']
+            try:
+                end_datetime = datetime.strptime(end_timestring.strip(), "%H:%M:%S")
+                end_datetime = end_datetime.replace( 
+                    tzinfo=timezone.utc, day=1, month=1, year=1970
+                    )
+                end_timestamp = end_datetime.timestamp() + 0.05
+                end_timestamp += maskdata.ix[index, 'day'] * 86400
+            except ValueError as error:
+                print("Conversion error: ",error)
+                end_timestamp = 0            
+            maskdata.ix[index, 'end'] = end_timestamp
+            # end_datetime2 = datetime.utcfromtimestamp(end_timestamp + self._tmin)
+            # diagnostic:
+            # print('start: ' + str(start_timestring)
+            #    + ' -> ' + str(start_timestamp) + ' -> ' + start_datetime2.isoformat()
+            #    + '  /  end: ' + str(end_timestring)
+            #    + ' -> ' + str(end_timestamp) + ' -> ' + end_datetime2.isoformat()
+            #    )
+        if(len(maskdata) == 0):
+            # no data
+            return(False, 0)        
         # force to numeric values, adding NaN when conversion is not possible.
         maskdata = maskdata.apply(pandas.to_numeric, errors='coerce')
-        maskdata = maskdata.sort_values(by='time') # puts NaN values at the back
+        maskdata = maskdata.sort_values(by='start') # puts NaN values at the back
         maskdata = maskdata.reset_index(drop=True)
-        print(maskdata)
-        postponed_indices = []
-
-        if len(maskdata)==0:
-            # print("mask file not found or empty.")
-            return False
-
-        length = len(self._data)
-        print("data length: ",length)
-        data_index = 0
+        #print(maskdata)
         mask_count = 0
-        end_time = -1E20
-        print( maskdata)
-        for mask_index in range(len(maskdata)):
-            # print('mask: ',mask_index)
-            # need to apply same correction as applied to main time stamps!
-            prev_end_time = end_time
-            start_time = maskdata['time'][mask_index] - self._tmin
-            if start_time < prev_end_time:
-                print('mask blocks overlap, postponing:', mask_index)
-                print(
-                    '  > ', maskdata['chan'][mask_index], ' - ',
-                    maskdata['time'][mask_index], ' - ',
-                    maskdata['span'][mask_index], ' <'
-                    )
-
-                postponed_indices.append(mask_index)
+        while(len(maskdata)>0):
+            print("(Re)reading mask data: ", len(maskdata), " element(s) remain.")
+            postponed_indices = []        
+            length = len(self._data)
+            data_index = 0
+            mask_index = 0
+            end_time = -1E20
+            #print( maskdata)
+            while(mask_index < len(maskdata)):
+                # need to apply same correction as applied to main time stamps!
+                prev_end_time = end_time
+                start_time = maskdata['start'][mask_index] 
+                if start_time < prev_end_time:
+                    #print('mask blocks overlap, postponing:', mask_index)
+                    postponed_indices.append(mask_index)
+                    mask_index += 1
+                    continue # try again with next block
+                if math.isnan(maskdata['end'][mask_index]):
+                    end_time = start_time + 0.05
+                else:
+                    end_time = maskdata['end'][mask_index] 
+                    while end_time < start_time:
+                        end_time += 86400 # allows spanning UTC 0:00
+                if not math.isnan(maskdata['chan'][mask_index]):
+                    channel_mask = 0xFF & maskdata['chan'][mask_index] # limit to 8-bit
+                else:
+                    channel_mask = 0x00
+                #print('mask block ',mask_index, '(',channel_mask,')   from ', start_time, ' to ', end_time)
+                while( # advance until data_index == start_time
+                    data_index < length
+                    and self._data[data_index, COL.TIME] < start_time
+                    ):                
+                    data_index += 1
+                while( # advance until data_index > end_time
+                    data_index < length
+                    and self._data[data_index, COL.TIME] < end_time
+                    ):
+                    self._data[data_index, COL.FLAG] |= channel_mask 
+                    self._data[data_index, COL.FLAG] |= (channel_mask << 24)
+                    mask_count += 1
+                    data_index += 1
+                # done with this block, proceed to next one
                 mask_index += 1
-            if not math.isnan(maskdata['span'][mask_index]):
-                end_time = start_time + maskdata['span'][mask_index]
-            else:
-                end_time = start_time + 0.050
-            if not math.isnan(maskdata['chan'][mask_index]):
-                channel_mask = 0xFF & maskdata['chan'][mask_index]
-            else:
-                channel_mask = 0x00
-            print('mask block ',mask_index, '(',channel_mask,')   from ', start_time, ' to ', end_time)
-                
 
-            while(
-                data_index < length
-                and self._data[data_index, COL.TIME] < start_time
-            ):                
-                data_index += 1
-            while(
-                data_index < length
-                and self._data[data_index, COL.TIME] < end_time
-            ):
-                self._data[data_index, COL.FLAG] |= channel_mask << 24
-                mask_count += 1
-                data_index += 1
+            maskdata = maskdata.iloc[postponed_indices,:].reset_index(drop=True)
+            #print('maskdata: ',maskdata)
+        # end of main while loop
+        print(
+            'done, masked ', mask_count, 
+            ' data points. Mask block remaining: ', len(maskdata)
+            )
+        return(True, mask_count)
 
-        print('masked ',mask_count,' data points.')
-        print('maskdata:  ',maskdata)
-        print('postponed: ',postponed_indices)
-        maskdata2 = maskdata.iloc[postponed_indices,:]
-        maskdata = maskdata2.reset_index(drop=True)
-        print('maskdata: ',maskdata)
+    ########################################################################################
+    def save_maskfile(self, maskfile):
+        """ save mask data """
+        result = False
+        message = 'undefined'
+        try:
+            with open(maskfile,'w', encoding="ascii") as file:
+                outstring = 'channel ,day,  start  ,   end\n'
+                file.write(outstring)
+                flags = 0x00 # start with no mask set
+                timestamp_a = 0
+                timestamp_b = 0
+                for row in self._data:
+                    new_flags = (row[COL.FLAG] & 0xFF000000) >> 24
+                    if new_flags == flags:
+                        # still in the same block, push along timestamp_b
+                        timestamp_b = row[COL.TIME]
+                    else:                        
+                        # new block:
+                        # write out previous block: (flags) from (timestamp_a to timestamp_b)
+                        if flags != 0x00:
+                            #...but only if there *was* a mask
+                            print('({:08b}) for {:f} --> {:f}'.format(
+                                flags, timestamp_a, timestamp_b
+                                ))
+                            day = int(timestamp_a // 86400) # enable multi-day runs
+                            start_date = datetime.utcfromtimestamp(timestamp_a + self._tmin)                    
+                            end_date = datetime.utcfromtimestamp(timestamp_b + self._tmin)
+                            outstring = '{:08b},{:3d},{:>9s},{:>9s}\n'.format(
+                                flags, day, 
+                                start_date.strftime("%H:%M:%S"),
+                                end_date.strftime("%H:%M:%S")     
+                                )
+                            file.write(outstring)
+                        # in any case, initialize new block
+                        timestamp_a = timestamp_b = row[COL.TIME]
+                        flags = new_flags
+                    
+                # at end of loop, we need to write out final block
+                if flags != 0x00:
+                    #...but only if there *was* a mask
+                    print('({:08b}) for {:f} --> {:f}'.format(
+                        flags, timestamp_a, timestamp_b
+                        ))
+                    day = timestamp_a // 86400 # enable multi-day runs
+                    start_date = datetime.utcfromtimestamp(timestamp_a + self._tmin)                    
+                    end_date = datetime.utcfromtimestamp(timestamp_b + self._tmin)
+                    outstring = '{:08b},{:3d},{:>9s},{:>9s}\n'.format(
+                        flag, day, 
+                        start_date.strftime("%H:%M:%S"),
+                        end_date.strftime("%H:%M:%S")     
+                        )
+                    file.write(outstring)
+                result = True
+                message = 'ok'
+        except (FileNotFoundError, PermissionError, IOError) as error:
+            errno, strerror = error.args 
+            result = False
+            message = 'Failed to open file '+maskfile+':\n'+strerror
+        finally:
+            file.close()
+        return(result, message)
+
+    ########################################################################################
+    def save_report(self, repfile):
+        """ generate and save report """
+        print("dummy: save report file to "+repfile)
+        return (False, "Not implemented.")
         
-        # TODO: add while loop until all postponed data is processed
-
-
-
-
-        #print('loaded mask file.')
-        #maskdata.convert_objects(convert_numeric=True)
-        #for index in range(len(maskdata)):
-        #    print(
-        #        'block: ', 
-        #        maskdata[index,'time'], ' + ', maskdata[index, 'span'],
-        #        ' is type ', repr(maskdata['time',index])
-        #        )
-        
-            
-
     ########################################################################################
     def filter_unlocked(self, bands, is_critical, overhang):
         """ mark where points are out of specified bands """

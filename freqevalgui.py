@@ -57,10 +57,26 @@ class FreqEvalMain(QMainWindow):
         self._base_path = self._settings.value('basepath', "")
 
     ###############################################################################
+    def show_msg(self, title, text):
+        """ show dialog with message, to be called from subroutines """
+        QMessageBox.about(self, title, text)
+
+    def confirm_msg(self, text):
+        """ show dialog with message, to be called from subroutines """
+        reply = QMessageBox.question(
+            self, 'Confirm',
+            text, QMessageBox.Yes, QMessageBox.No
+            )
+        if reply == QMessageBox.Yes:
+            return True
+        else:            
+            return False
+    
+    ###############################################################################
     def show_msg_not_implemented(self, qval):
-        """show dialog indicating not-yet-implemented feature"""
+        """ show dialog indicating not-yet-implemented feature, called directly from menus """
         del qval
-        QMessageBox.about(self, "Not implemented", "This function is not yet implemented.")
+        self.show_msg("Not implemented", "This function is not yet implemented.")
 
     ###############################################################################
     def redraw(self, qval):
@@ -89,21 +105,6 @@ class FreqEvalMain(QMainWindow):
         if filename:
             self._base_path = os.path.dirname(filename)
             self._logic.open_data_file(filename) # trigger file loading
-
-    ###############################################################################
-    def save_report(self, qval):
-        """ save associated config file, generate and save report """
-        del qval
-        status = self._logic.save_report()
-        if status == -2:
-            QMessageBox.about(self, "Report generation", "No data file is currently open.")
-        elif status == -1:
-            QMessageBox.about(self, "Report generation", "Report generation failed.")
-        elif status == 0:
-            QMessageBox.about(
-                self, "Report generation",
-                "Report was successfully generated and saved along with current configuration."
-            )
 
     ###############################################################################
     def save_default_config(self, qval):
@@ -136,15 +137,20 @@ class FreqEvalMain(QMainWindow):
         open_act.setStatusTip('Open data file')
         open_act.triggered.connect(self.select_data_file)
 
+        savemask_act = QAction('Save &mask data', self)
+        #savemask_act.setShortcut('Ctrl+R')
+        savemask_act.setStatusTip('Save mask information for current data set')
+        savemask_act.triggered.connect(self._logic.save_maskfile_passthru)
+
         report_act = QAction('Save &report', self)
         report_act.setShortcut('Ctrl+R')
         report_act.setStatusTip('Save report and config for current data file')
-        report_act.triggered.connect(self.save_report)
+        report_act.triggered.connect(self._logic.save_report_passthru)
 
         save_config_act = QAction('Save &default config', self)
         #save_config_act.setShortcut('Ctrl+O')
         save_config_act.setStatusTip('Save current channel and evaluation configuration as default')
-        save_config_act.triggered.connect(self.save_default_config)
+        save_config_act.triggered.connect(self._logic.save_default_config_passthru)
 
         exit_act = QAction('&Exit', self)
         exit_act.setShortcut('Ctrl+Q')
@@ -153,6 +159,7 @@ class FreqEvalMain(QMainWindow):
 
         file_menu = menubar.addMenu('&File')
         file_menu.addAction(open_act)
+        file_menu.addAction(savemask_act)
         file_menu.addAction(report_act)
         file_menu.addAction(save_config_act)
         file_menu.addAction(exit_act)

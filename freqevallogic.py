@@ -31,7 +31,6 @@ class SelectedPoints(object):
         self.time_a = None
         self.time_b = None
 
-
 class FreqEvalLogic(object):
     """program logic class for frequency evaluation program"""
 
@@ -43,7 +42,6 @@ class FreqEvalLogic(object):
         self.gui = gui
         self.gui.set_status("Initializing backend")
 
-        self._filename = None
         self._data_obj = None
         self._points = SelectedPoints() # initialize point selection storage
 
@@ -301,7 +299,6 @@ class FreqEvalLogic(object):
         self.gui.set_status(outstring)
         if loaded_values > 1:
             self._data_obj = new_data
-            self._filename = filename
         
         path, ext = os.path.splitext(filename)
         maskfile = path+'.msk'
@@ -309,11 +306,10 @@ class FreqEvalLogic(object):
 
         outstring = "checking for mask file "+maskfile
         self.gui.set_status(outstring)
-        retval = self._data_obj.load_maskfile(maskfile)
-        if retval:
-            print("mask file exists")
-        else:
-            print("mask file does not exist")
+        retval, mask_count = self._data_obj.load_maskfile(maskfile)
+        del retval
+        outstring = str(mask_count)+" points masked"
+        self.gui.set_status(outstring)
 
         self.gui.set_status("filtering data")
         self._data_obj.filter_data(self.overhangs, self.outlier_threshold)
@@ -323,24 +319,101 @@ class FreqEvalLogic(object):
         self.gui.set_status("calculating Allan deviations")
         adev_obj = self._data_obj.channel_adev()
         self.plot_channel_adev(adev_obj)
-        self.gui.set_status("ok")        
+        self.gui.set_status("ok")
+
+
+
+    ###############################################################################
+    #def save_maskfile(self, qval):
+    #    """ initiate saving of mask file """
+    #    del qval
+    #    status, message = self._logic.save_maskfile()
+    #    if status:
+    #        QMessageBox.about(self, "Saved mask data", "Succesfully saved mask data to file.")
+    #    else:
+    #        outstring = (
+    #            "Saving mask data failed with error message:\n"
+    #            + message
+    #            )
+    #        QMessageBox.about(self, "Error saving mask data", outstring)
 
     ###############################################################################################
-    def save_report(self):
+    def save_maskfile_passthru(self, qval):
+        """ (re-)generate mask file to store with frequency data """
+        self.gui.set_status("saving mask file")
+        if not self._data_obj:
+            self.gui.show_msg(
+                    'Failed to save mask file',
+                    'No data file is currently loaded.'
+                    )
+            self.gui.set_status("failed to save mask data")
+            return
+        filename = self._data_obj.filename
+        print('file: ',filename)
+        path, ext = os.path.splitext(filename)
+        maskfile = path+'.msk'
+        outstring = "saving mask file " + maskfile
+        self.gui.set_status(outstring)
+        status, message = self._data_obj.save_maskfile(maskfile)
+        self.gui.set_status("ok")
+        if not status:
+            self.gui.show_msg(
+                "Failed to save mask file",
+                "Saving mask data to file failed with message:\n"
+                + message
+                )
+        else:
+            self.gui.show_msg(
+                "Save mask file",
+                "Succesfully saved mask data to file:\n"
+                + maskfile
+                )
+            self.gui.set_status("ok")
+
+    ###############################################################################################
+    def save_report_passthru(self, qval):
+        del qval
         """ generate report according to current settings. Save along with configuration. """
-        self.gui.set_status("saving configuration file")
-        
-        self.gui.set_status("generating report")
-        self.gui.set_status("saving report")
-        self.gui.set_status("ok")        
-        return 0
+        self.gui.set_status('generating report file')
+        if not self._data_obj:
+            self.gui.show_msg(
+                    'Failed to generate report',
+                    'No data file is currently loaded.'
+                    )
+            self.gui.set_status('failed to generate report')
+            return
+        filename = self._data_obj.filename
+        print('file: ',filename)
+        path, ext = os.path.splitext(filename)
+        repfile = path+'.rep'
+        outstring = 'generating report file ' + repfile
+        self.gui.set_status(outstring)
+        status, message = self._data_obj.save_report(repfile)
+        if not status:
+            self.gui.show_msg(
+                'Failed to generate report',
+                'Generating report file failed with message:\n'
+                + message
+                )
+            self.gui.set_status('failed to generate report')        
+        else:
+            self.gui.show_msg(
+                'Generate report file',
+                'Succesfully saved report to file:\n'
+                + maskfile
+                )
+            self.gui.set_status('ok')
 
     ###############################################################################################
-    def save_default_config(self):
+    def save_default_config_passthru(self, qval):
+        del qval
         """ Save current settings to default config file. """
-        self.gui.set_status("saving configuration file")
-        self.gui.set_status("ok")        
-        return 0
+        confirm = self.gui.confirm_msg('Do you really want to overwrite the default config file?')
+        if confirm:
+            self.gui.set_status("saving configuration file")
+            # call code
+        else:
+            self.gui.set_status("config overwrite cancelled")
 
     ###############################################################################################
     def set_channel_color_list(self, clist):
