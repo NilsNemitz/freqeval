@@ -29,6 +29,12 @@ class COL(object):
     # maps zero-based indices to offset indices in full data array
     CHANNELS = 4
 
+class RangeInformation(object):
+    """ stores minimum/maximum values for plots """
+    def __init__(self):
+        self.t_min = self.t_max = 0
+        self.y_min = self.y_max = 0
+
 
 class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance-attributes
     """manage frequency data loading/streaming"""
@@ -45,6 +51,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         self._tmin = 0
         self._baselines = [0] * 4
         self.filename = None
+        self.ranges = [] # holds full data range for each channel later
 
     def load_file(self, filename):
         """load data from a frequency csv file"""
@@ -97,10 +104,17 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         baselines = self._channel_table.baselines()
         print("baselines: ", baselines)
 
+        self.ranges = []
         # TODO: can this be handled in a way that allows changing it for already loaded data?
         for index in range(COL.CHANNELS):
             self._data[:, COL.COLS[index]] -= baselines[index]
-        
+            this_range = RangeInformation()        
+            this_range.y_min = self._data[:, COL.COLS[index]].min()
+            this_range.y_max = self._data[:, COL.COLS[index]].max()
+            this_range.t_min = self._data[0, COL.TIME]
+            this_range.t_max = self._data[-1, COL.TIME]
+            self.ranges.append(this_range)
+
         return len(self._data)
 
     ########################################################################################
@@ -237,6 +251,60 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             )
         return(True, mask_count)
 
+    def binary_search_data(self, time):
+        """ fast search for an index corresponding to a given time """
+        # fast exit if time is not in range
+        first = 0
+        if self._data[first, COL.TIME] > time:
+            return(False, first)
+        last = len(self._data)-1
+        if self._data[last, COL.TIME] < time:
+            return(False, last)
+        
+        found = False
+        while first<=last and not found:
+            midpoint = (first + last)//2
+            if self._data[midpoint, COL.TIME] == time:
+                found = True
+            else:
+                if time < self._data[midpoint, COL.TIME]:
+                    last = midpoint-1
+                else:
+                    first = midpoint+1
+        if found:
+            # if exact time was found, data point is in midpoint.
+            return(True, midpoint)
+        else:
+            # if not, first and last are now equal and together with midpoint bracket
+            # the target time
+            if abs(self._data[midpoint,COL.TIME]-time) < abs(self._data[first,COL.TIME]-time):
+                return(True, midpoint)
+            else:
+                return(True, first)
+
+    ########################################################################################
+    def add_to_mask(self, tstart, tend, flags):
+        """ mask additional points selected in interface """
+        flags = (flags & 0xFF) # keep only eight bits
+        flags = flags | (flags << 24) # simultaneously add mask and "not good" bits
+        start_found, start_index = self.binary_search_data(tstart)
+        end_found, end_index = self.binary_search_data(tend)
+        print('start : ', start_found, '  ', start_index)
+        print('end   : ', end_found, '  ', end_index)
+        if (not start_found) and (not end_found):
+            print(
+                'Mask: selected time values (',
+                tstart,' and ',tend,') are not in range --> no mask'
+                )
+            return 0
+        if start_index > end_index:
+            print('Mask: indices ', start_index, ' and ', end_index, 'out of order: --> no mask')
+            return 0
+        
+        print('Mask: masking points from index ', start_index, ' to ', end_index)
+        self._data[int(start_index):int(end_index+1), COL.FLAG] |= flags
+        return end_index - start_index + 1
+    
     ########################################################################################
     def save_maskfile(self, maskfile):
         """ save mask data """
@@ -443,8 +511,15 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
 #        col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
         col_data = self._data[:, col_list]
         pick_list = self._data[:, COL.FLAG] & channel_mask == 0
-        return col_data[pick_list]
+        data = col_data[pick_list]
+        range_info = RangeInformation()
+        range_info.y_min = data[:, 1].min()
+        range_info.y_max = data[:, 1].max()
+        range_info.t_min = data[0, 0]
+        range_info.t_max = data[-1, 0]
+        return col_data[pick_list], range_info
 
+    ########################################################################################
     def get_mskd_points(self, channel):
         if channel >= COL.CHANNELS:
             print('channel specification ',channel,' exceeds number of channel (',COL.CHANNELS,')')
@@ -454,6 +529,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         pick_list = self._data[:, COL.FLAG] & test_flag != 0
         return col_data[pick_list]
 
+    ########################################################################################
     def get_rej1_points(self, channel):
         """ get points marked as directly rejected by filter """
         if channel >= COL.CHANNELS:
@@ -466,6 +542,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         pick_list2 = self._data[:, COL.FLAG] & test_flag == 0
         return col_data[np.logical_and(pick_list1, pick_list2)]
 
+    ########################################################################################
     def get_rej2_points(self, channel):
         """ get points rejected only due to problem with critical channel """
         if channel >= COL.CHANNELS:
@@ -479,13 +556,20 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         return col_data[np.logical_and(pick_list1, pick_list2)]
 
     ########################################################################################
+    def get_tmin(self):
+        """ access reference tmin value (UNIX timestamp) """
+        return self._tmin
+
+    ########################################################################################
     def evaluate_data(self):
         """ evaluate filtered data """
         new_adev_obj = ADevData(COL.CHANNELS) # make new object to store ADev data
         reference_values = self._channel_table.adev_ref()
 
         for ch_index in range(COL.CHANNELS):
-            data = self.get_good_points([ch_index])
+            # TODO: This should not collect good data again, but use a buffered copy
+            data, range_info = self.get_good_points([ch_index])
+            del range_info
             times = data[:,0]
             values = data[:,1]
             meanval = np.mean(values)

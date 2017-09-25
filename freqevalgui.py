@@ -19,13 +19,14 @@ from PyQt5 import ( # pylint: disable=locally-disabled, no-name-in-module
 from PyQt5.QtWidgets import ( # pylint: disable=locally-disabled, no-name-in-module
     QMainWindow, QMessageBox,
     #QApplication, QWidget, #QPlainTextEdit,
-    QFrame, QLabel, QTableView,
+    QFrame, QLabel, QTableView, #QTableWidget, QTableWidgetItem,
     #qApp,
-    QFileDialog,
+    QFileDialog, QPushButton, QComboBox,
     QAction,
     #QHBoxLayout,
-    QVBoxLayout,
-    #QGridLayout,
+    #QVBoxLayout,
+    QGridLayout,
+    #QSpacerItem,
     QSplitter, QScrollArea,
     QSizePolicy
     )
@@ -50,7 +51,7 @@ class FreqEvalMain(QMainWindow):
         self._settings.setFallbacksEnabled(False)
         # configuration constants
         self._logic = FreqEvalLogic(self)
-        self.init_gui()
+        self._init_gui()
         self._logic.init_graphs()
         self.show()
         self.init_state() # code in init_state has access to logic already
@@ -69,9 +70,9 @@ class FreqEvalMain(QMainWindow):
             )
         if reply == QMessageBox.Yes:
             return True
-        else:            
+        else:
             return False
-    
+
     ###############################################################################
     def show_msg_not_implemented(self, qval):
         """ show dialog indicating not-yet-implemented feature, called directly from menus """
@@ -83,7 +84,7 @@ class FreqEvalMain(QMainWindow):
         """ manually trigger window redraw """
         del qval
         print("forced redraw")
-        self._channel_table_view.update()
+        self._channel_table.update()
         self._graph_widget.update()
         #self._channel_table_view.refresh()
         self._graph_widget.refresh()
@@ -123,11 +124,13 @@ class FreqEvalMain(QMainWindow):
             )
 
     ###############################################################################
-    def init_gui(self):
+    def _init_gui(self):
         """initialize and load basic settings for UI"""
         self.setWindowTitle('Frequency Evaluation for Comb Count')
         self.resize(self._settings.value('windowsize', QtCore.QSize(270, 225))) # pylint: disable=locally-disabled, no-member
         self.move(self._settings.value('windowposition', QtCore.QPoint(50, 50))) # pylint: disable=locally-disabled, no-member
+
+        row_height = 24
 
         ### set up menus #########################################################
         menubar = self.menuBar()
@@ -167,6 +170,7 @@ class FreqEvalMain(QMainWindow):
         mask_act = QAction('&Mask selected', self)
         mask_act.setShortcut('Ctrl+M')
         mask_act.setStatusTip('Mask data between selected points')
+        mask_act.triggered.connect(self._logic.mask_selected_passthru)
 
         edit_mask_act = QAction('((&Edit masks))', self)
         edit_mask_act.setStatusTip('Edit list of applied masks')
@@ -180,12 +184,12 @@ class FreqEvalMain(QMainWindow):
         view_all_act = QAction('((View &all))', self)
         view_all_act.setShortcut('Ctrl+A')
         view_all_act.setStatusTip('View all data')
-        view_all_act.triggered.connect(self.show_msg_not_implemented)
+        view_all_act.triggered.connect(self._logic.zoom_all)
 
         zoom_good_act = QAction('((&Zoom good data))', self)
         zoom_good_act.setShortcut('Ctrl+Z')
         zoom_good_act.setStatusTip('Zoom in to show only good data')
-        zoom_good_act.triggered.connect(self.show_msg_not_implemented)
+        zoom_good_act.triggered.connect(self._logic.zoom_good)
 
         redraw_act = QAction('&Redraw', self)
         redraw_act.setShortcut('Ctrl+R')
@@ -199,12 +203,9 @@ class FreqEvalMain(QMainWindow):
 
         #self.settings.setValue('windowposition', self.pos())
         #self.settings.setValue('windowsize', self.size())
-        #self._size_combo = QComboBox()
-        #self._size_combo.addItem("18 pt", 18)
-        #self._size_combo.addItem("100 pt", 100)
-        #self._size_combo.setCurrentIndex(-1)
-        #self._size_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        #self._size_combo.currentIndexChanged.connect(self.size_combo_changed)
+
+        self.file_info_label = QLabel('filename/filename/filename.fil : MJD 12345')
+        self.statusBar().addPermanentWidget(self.file_info_label)
 
         ### sub-frame for time series graphs (upper region) ###
         self.graph1_layout = pg.GraphicsLayout()
@@ -220,7 +221,49 @@ class FreqEvalMain(QMainWindow):
         graph2 = pg.GraphicsView()
         graph2.setCentralItem(self.graph2_layout)
 
+        ### subframe (in scrollpanel?) for masking controls / selection readout
+        mask_title_label = QLabel("Data selection")
+        mask_title_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        mask_title_label.setStyleSheet("font-weight: bold;")
+        mask_table = QTableView()
+        mask_table.setModel(self._logic.selection_table)
+        mask_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        mask_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        vheader = mask_table.verticalHeader()
+        hheader = mask_table.horizontalHeader()
+        vheader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
+        hheader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
+        vheader.setMaximumSectionSize(row_height)
+        mask_table.resizeRowsToContents()
+        mask_table.resizeColumnsToContents()
+        mask_table.setFixedSize(
+            hheader.length()+vheader.sizeHint().width()+2,
+            vheader.length()+hheader.sizeHint().height()+2
+            )
+        mask_table.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        mask_button = QPushButton('Mask selected')
+        mask_button.clicked.connect(self._logic.mask_selected_passthru)
+
+        self._mask_channel_box = QComboBox()
+        self._mask_channel_box.addItem('ch 1', 0b00000001)
+        self._mask_channel_box.addItem('ch 2', 0b00000010)
+        self._mask_channel_box.addItem('ch 3', 0b00000100)
+        self._mask_channel_box.addItem('ch 4', 0b00001000)
+        self._mask_channel_box.addItem( 'all', 0b11111111)
+
+        mask_frame = QFrame()
+        mask_frame_layout = QGridLayout(mask_frame)
+        mask_frame_layout.setContentsMargins(0, 0, 0, 0)
+        mask_frame_layout.addWidget(mask_title_label, 0, 0, 1, 1)
+        mask_frame_layout.addWidget(self._mask_channel_box, 1, 0, 1, 1)
+        mask_frame_layout.addWidget(mask_button, 2, 0, 1, 1)
+        mask_frame_layout.addWidget(mask_table, 0, 1, 3, 1)
+
         ### scrollable sub-frame for results and configuration tables
+        hor_spacer = QFrame()
+        hor_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
         channel_table_title_label = QLabel("Channel settings")
         channel_table_title_label.setStyleSheet("font-weight: bold;")
         ch_adev_table_title_label = QLabel("Allan Deviation results")
@@ -228,25 +271,23 @@ class FreqEvalMain(QMainWindow):
         evaluation_table_title_label = QLabel("Evaluation settings and results")
         evaluation_table_title_label.setStyleSheet("font-weight: bold;")
 
-        row_height = 24
         ### table for channel parameters
-        self._channel_table_view = QTableView()
-        self._channel_table_view.setModel(self._logic.channel_table)
-        self._channel_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._channel_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        vertical_header = self._channel_table_view.verticalHeader()
+        self._channel_table = QTableView()
+        self._channel_table.setModel(self._logic.channel_table)
+        self._channel_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._channel_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        vertical_header = self._channel_table.verticalHeader()
         vertical_header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
         vertical_header.setMaximumSectionSize(row_height)
-        #vertical_header.setDefaultAlignment(Qt.AlignCenter)
-        self._channel_table_view.resizeRowsToContents()
-        self._channel_table_view.resizeColumnsToContents()
-        vheader = self._channel_table_view.verticalHeader()
-        hheader = self._channel_table_view.horizontalHeader()
-        self._channel_table_view.setFixedSize(
+        self._channel_table.resizeRowsToContents()
+        self._channel_table.resizeColumnsToContents()
+        vheader = self._channel_table.verticalHeader()
+        hheader = self._channel_table.horizontalHeader()
+        self._channel_table.setFixedSize(
             hheader.length()+vheader.width()+2,
             vheader.length()+hheader.height()+2
             )
-        self._channel_table_view.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._channel_table.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         ### table for Allan deviation results
         self._adev_table_view = QTableView()
@@ -262,10 +303,6 @@ class FreqEvalMain(QMainWindow):
         self._adev_table_view.resizeRowsToContents()
         self._adev_table_view.resizeColumnsToContents()
         self._adev_table_view.setFixedHeight(vheader.length()+2)
-        #self._ch_adev_table_view.setFixedSize(
-        #    hheader.length()+vheader.width()+2,
-        #    vheader.length()+hheader.height()+2
-        #    )
         self._adev_table_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         ### table for evaluation parameters and results
@@ -279,7 +316,7 @@ class FreqEvalMain(QMainWindow):
         vheader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
         vheader.setMaximumSectionSize(row_height)
         self._evaluation_table_view.resizeRowsToContents()
-        for divider_row in (4,8,14,19):
+        for divider_row in (4, 8, 14, 19):
             self._evaluation_table_view.setRowHeight(divider_row, 5)
         self._evaluation_table_view.resizeColumnsToContents()
         vheader = self._evaluation_table_view.verticalHeader()
@@ -293,13 +330,20 @@ class FreqEvalMain(QMainWindow):
         ### full size frame to hold the evaluation results
         results_frame = QFrame()
         results_frame.setContentsMargins(0, 0, 0, 0)
-        results_frame_layout = QVBoxLayout(results_frame)
-        results_frame_layout.addWidget(channel_table_title_label)
-        results_frame_layout.addWidget(self._channel_table_view)
-        results_frame_layout.addWidget(evaluation_table_title_label)
-        results_frame_layout.addWidget(self._evaluation_table_view)
-        results_frame_layout.addWidget(ch_adev_table_title_label)
-        results_frame_layout.addWidget(self._adev_table_view)
+        #results_frame_layout = QVBoxLayout(results_frame)        
+        results_frame_layout = QGridLayout(results_frame)
+        results_frame_layout.addWidget(mask_frame, 0, 0, 1 ,1)
+        results_frame_layout.addWidget(hor_spacer, 0, 1, 1 ,1)
+        results_frame_layout.addWidget(channel_table_title_label, 1, 0, 1 ,2)
+        #
+        #mask_channel_box.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        #results_frame_layout.addWidget(mask_channel_box, 1, 0, 1, 2)
+        #
+        results_frame_layout.addWidget(self._channel_table, 2, 0, 1, 2)
+        results_frame_layout.addWidget(evaluation_table_title_label, 3, 0, 1, 2)
+        results_frame_layout.addWidget(self._evaluation_table_view, 4, 0, 1, 2)
+        results_frame_layout.addWidget(ch_adev_table_title_label, 5, 0, 1, 2)
+        results_frame_layout.addWidget(self._adev_table_view, 6, 0, 1, 2)
 
         ### create scrollable area to wrap results frame ###
         scroll_area = QScrollArea()
@@ -355,10 +399,10 @@ class FreqEvalMain(QMainWindow):
         self._graph_widget.setStretchFactor(1, 1)
 
         self._main_widget = QSplitter(Qt.Horizontal)
-        self._main_widget.addWidget(scroll_area)
         self._main_widget.addWidget(self._graph_widget)
-        self._main_widget.setStretchFactor(0, 0)
-        self._main_widget.setStretchFactor(1, 1)
+        self._main_widget.addWidget(scroll_area)
+        self._main_widget.setStretchFactor(0, 1)
+        self._main_widget.setStretchFactor(1, 0)
         self.setCentralWidget(self._main_widget)
 
     def init_state(self):
@@ -372,10 +416,18 @@ class FreqEvalMain(QMainWindow):
         """return handle for graph 2 window as layout"""
         return self.graph2_layout
 
+    def get_mask_flags(self):
+        index = int(self._mask_channel_box.currentIndex())
+        flags = self._mask_channel_box.itemData(index) & 0xFF
+        return flags
+
     def set_status(self, text):
         """set normal display text of status bar"""
         self.statusBar().showMessage(text)
 
+    def set_file_info(self, text):
+        """set file information text in status bar"""
+        self.file_info_label.setText(text)
 
     def closeEvent(self, event): # pylint: disable=locally-disabled, invalid-name
         """callback on window close"""

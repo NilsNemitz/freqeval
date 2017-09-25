@@ -439,6 +439,16 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
         if role == QtC.CheckStateRole:
             return None
 
+    #######################################################################
+    def update_view(self):
+        """ initiate redraw """
+        index_tl = self.createIndex(0, 0)        
+        index_br = self.createIndex(
+            self.rowCount(None), 
+            self.columnCount(None)
+            )        
+        self.dataChanged.emit(index_tl,index_br, [QtC.DisplayRole])
+
 #    def names(self):
 #        """ getter function for channel filter toggles """
 #        return self._data['name']
