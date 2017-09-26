@@ -41,8 +41,6 @@ automate reload every X minutes
 
 file export
 
-move update button to view menu?
-
 re-label fake logarithmic axes in ADev plot
 add gridlines
 
@@ -54,6 +52,9 @@ add updates to status bar
 
 toggle-button to show raw frequencies or evaluation result as time series
 
-
+add shortcuts to set window divisions to convenient values:
+ - focus on single channel analysis
+ - focus on relative frequency results
+ - overall view including Allan deviations
 
   

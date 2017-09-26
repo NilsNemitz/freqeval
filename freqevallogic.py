@@ -53,6 +53,9 @@ class FreqEvalLogic(object):
         super().__init__()
         self.gui = gui
         self.gui.set_status("Initializing backend")
+        self._ch_plots = []
+        self._eval_plots = []
+        
 
         self._data_obj = None
         self._points = SelectedPoints() # initialize point selection storage
@@ -67,6 +70,7 @@ class FreqEvalLogic(object):
             )
         self.channel_ceo = 1
         self.channel_rep = 2
+        self.line_rep = 4  # detect n = 4 for repetition rate
         self.num_channels = 4
         self.num_evaluations = 3
         self.overhangs = [1, 10] # points marked bad before/after "out-of-band" point
@@ -78,7 +82,8 @@ class FreqEvalLogic(object):
             'outlier_threshold':str(self.threshold),
             'evaluations':str(self.num_evaluations),
             'ceo_channel':str(self.channel_ceo),
-            'rep_channel':str(self.channel_rep)
+            'rep_channel':str(self.channel_rep),
+            'rep_line_index':str(self.channel_rep)
         }
         for index in range(self.num_channels):
             section = 'CHANNEL{:d}'.format(index+1)
@@ -115,8 +120,6 @@ class FreqEvalLogic(object):
             self.eval_config[section]['ref_reference'] = '123123123123123.1234'
             self.eval_config[section]['ref_sys_cor'] = '0.400'
             self.eval_config[section]['ref_sys_unc'] = '0.300'
-            self.eval_config[section]['rep_rate_line'] = '4'
-            self.eval_config[section]['rep_rate_channel'] = '2'
 
         print("reading default config file")
         self.eval_config.read('default.cfg')
@@ -147,7 +150,7 @@ class FreqEvalLogic(object):
         # initialize graph references, to be populated after logic start
         self._g1 = self._g2 = None
         self._pa1 = self._pa2 = self._pa3 = self._pa4 = None
-        self._pb1 = self._pb2 = None
+        # self._pb1 = self._pb2 = None
 
 
     def init_graphs(self):
@@ -194,56 +197,63 @@ class FreqEvalLogic(object):
             axis.setStyle(tickTextWidth=textwidth, autoExpandTextSpace=False)
             plot.ref.setContentsMargins(0, 0, 2, 0)  # left, top, right, bottom
         
-        ### Initialize graph 2 ###
-        random_x = np.arange(1000)
-        random_y = np.random.normal(size=(2, 1000)) # pylint: disable=locally-disabled, no-member
+        ### Initialize graph 2 - time series data for evaluation ###
         self._g2.setSpacing(0.)
-        self._g2.setContentsMargins(0., 10., 0., 1.)
+        self._g2.setContentsMargins(0., 1., 0., 1.)
 
-        self._pb1 = self._g2.addPlot(row=0, col=0, name="plotB1")
-        self._pb2 = self._g2.addPlot(row=0, col=1, name="plotB2")
+        # TODO: set number of plots based on data
+        num_plots = 3
+        self._eval_plots = []
+        for cnt in range(num_plots):
+            name = 'plotB{:1.0f}'.format(cnt+1)
+            print('plot name: ',name)
+            plot = self._g2.addPlot(row=cnt, col=0, name=name)
+            plot.setContentsMargins(0, 0, 2, 0)  # left, top, right, bottom        
+            plot.setXLink(self._ch_plots[0].ref)
+            axis = plot.getAxis('left')
+            axis.setStyle(tickTextWidth=textwidth, autoExpandTextSpace=False)
+            if cnt < num_plots-1:
+                plot.getAxis('bottom').setStyle(showValues=False)
+            self._eval_plots.append(PlotInformation(plot))
+        
+    ###############################################################################################
+    def _clicked_point(self, plot, points):
+        """ callback function to handle point selection """
+        del plot
+        penNone = QPen(QtC.NoPen)
+        penWhite = pg.mkPen(Gr.WHITE)
+        penWhite.setWidth(5)
+        penGray = pg.mkPen(Gr.GRAY)
+        penGray.setWidth(5)
+        # TODO: points do not remember their brush settings
+        # TODO: therefore we should instead add our own markers we can delete later
+        # TODO: get time from selected point, highlight in all plots?
 
-        self._pb1.plot(random_x, random_y[0], pen=Gr.GRAY)
-        self._pb2.plot(random_x, random_y[1], pen=Gr.GRAY)
+        if self._points.point_b:
+            self._points.point_b.setPen(penNone)
+            self._points.point_b.setBrush(self._points.color_b)
+
+        if self._points.point_a:
+            self._points.point_a.setPen(penGray)
+        self._points.point_b = self._points.point_a
+        self._points.color_b = self._points.color_a
+        self._points.point_a = points[0]
+        self._points.color_a = points[0].brush()
+        time = self._points.point_a.pos()[0]            
+        self._points.point_a.setPen(penWhite)
+        self.selection_table.set_selection(time)
 
     ###############################################################################################
     def plot_time_series(self):
         """ update graphs of time series data """
-        def clicked(plot, points):
-            """ callback function to handle point selection """
-            del plot
-            penNone = QPen(QtC.NoPen)
-            penWhite = pg.mkPen(Gr.WHITE)
-            penWhite.setWidth(5)
-            penGray = pg.mkPen(Gr.GRAY)
-            penGray.setWidth(5)
-            # TODO: points do not remember their brush settings
-            # TODO: therefore we should instead add our own markers we can delete later
-            # TODO: get time from selected point, highlight in all plots?
-
-            if self._points.point_b:
-                self._points.point_b.setPen(penNone)
-                self._points.point_b.setBrush(self._points.color_b)
-
-            if self._points.point_a:
-                self._points.point_a.setPen(penGray)
-            self._points.point_b = self._points.point_a
-            self._points.color_b = self._points.color_a
-            
-            self._points.point_a = points[0]
-            self._points.color_a = points[0].brush()
-            time = self._points.point_a.pos()[0]            
-            
-            self._points.point_a.setPen(penWhite)
-            self.selection_table.set_selection(time)
 
         baselines = self.channel_table.baselines()
         #plots = [self._pa1, self._pa2, self._pa3, self._pa4]
 
         for ch_index in range(COL.CHANNELS):
-            #print('plotting channel ',ch_index+1,' data.')
+            print('plotting channel ',ch_index+1,' data.')
             # get good data for channel
-            good, range_info = self._data_obj.get_good_points([ch_index])
+            good, range_info = self._data_obj.get_good_points(ch_index)
             self._ch_plots[ch_index].good = range_info
             self._ch_plots[ch_index].all = self._data_obj.ranges[ch_index]
                 #print('number of good points:', good.shape)
@@ -258,11 +268,11 @@ class FreqEvalLogic(object):
             sc_rej.addPoints(pos=rej1, brush=Gr.YELLOW)
             sc_rej.addPoints(pos=rej2, brush=Gr.ORANGE)
             sc_rej.addPoints(pos=mskd, brush=Gr.RED)
-            sc_rej.sigClicked.connect(clicked)
+            sc_rej.sigClicked.connect(self._clicked_point)
             # keep the good points in their own plot object, prevents disappearance
             sc_good = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
             sc_good.addPoints(pos=good, brush=Gr.BLUE)
-            sc_good.sigClicked.connect(clicked)
+            sc_good.sigClicked.connect(self._clicked_point)
 
             labelstring = (
                 "CH "+str(ch_index+1)+"1 (Hz)<br>-"
@@ -273,6 +283,71 @@ class FreqEvalLogic(object):
             plot.addItem(sc_rej)
             plot.addItem(sc_good)
             labelstyle = {'color': Gr.CH_COLS[ch_index].name(), 'font-size': '10pt'}
+            plot.setLabel(
+                'left', text=labelstring, units=None, unitPrefix=None,
+                **labelstyle
+                )
+
+    ###############################################################################################
+    def plot_eval_time_series(self):
+        """ update graphs of time series data for frequency evaluations """
+        #def clicked(plot, points):
+        #    """ callback function to handle point selection """
+        #    del plot
+        #    penNone = QPen(QtC.NoPen)
+        #    penWhite = pg.mkPen(Gr.WHITE)
+        #    penWhite.setWidth(5)
+        #    penGray = pg.mkPen(Gr.GRAY)
+        #    penGray.setWidth(5)
+        #    # TODO: points do not remember their brush settings
+        #    # TODO: therefore we should instead add our own markers we can delete later
+        #    # TODO: get time from selected point, highlight in all plots?
+        #
+        #    if self._points.point_b:
+        #        self._points.point_b.setPen(penNone)
+        #        self._points.point_b.setBrush(self._points.color_b)
+        #
+        #    if self._points.point_a:
+        #        self._points.point_a.setPen(penGray)
+        #    self._points.point_b = self._points.point_a
+        #    self._points.color_b = self._points.color_a
+        #    
+        #    self._points.point_a = points[0]
+        #    self._points.color_a = points[0].brush()
+        #    time = self._points.point_a.pos()[0]            
+        #    
+        #    self._points.point_a.setPen(penWhite)
+        #    self.selection_table.set_selection(time)
+
+        #baselines = self.channel_table.baselines()
+
+        for eval_index in range(self.num_evaluations):
+            print('plotting data for evaluation #',eval_index+1,'.')
+            # get good data for channel
+            points = self._data_obj.get_evaluation_points(eval_index)
+            plot = self._eval_plots[eval_index].ref
+            color = self.evaluation_color_list[eval_index]
+            name = self.evaluation_table.parameters[eval_index]['name']
+            print('evaluation color: ', color)
+            if len(points) > 1:
+                #self._ch_plots[ch_index].good = range_info
+                sc = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
+                sc.addPoints(pos=points, brush=color)
+                #sc.addPoints(pos=points, brush=Gr.ORANGE)
+                sc.sigClicked.connect(self._clicked_point)
+                #sc_rej.addPoints(pos=rej2, brush=Gr.ORANGE)
+                #sc_rej.addPoints(pos=mskd, brush=Gr.RED)
+                #sc_rej.sigClicked.connect(clicked)
+                # keep the good points in their own plot object, prevents disappearance
+                #sc_good = pg.ScatterPlotItem(size=4, pen=pg.mkPen(None))
+                #sc_good.addPoints(pos=good, brush=Gr.BLUE)
+                #sc_good.sigClicked.connect(clicked)
+                plot.clear()
+                plot.addItem(sc)
+            else:
+                plot.clear()
+            labelstring = name+'<br>relative (Hz)<br>'
+            labelstyle = {'color': color.name(), 'font-size': '10pt'}
             plot.setLabel(
                 'left', text=labelstring, units=None, unitPrefix=None,
                 **labelstyle
@@ -319,6 +394,8 @@ class FreqEvalLogic(object):
     ###############################################################################################
     def plot_channel_adev(self, adev_obj):
         """ draw ADev graph for individual channel data """
+        # FIXME: disabled! 
+        return None
         scB1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None))
         er_b1 = []
         for index in range(self._data_obj.channels()):
@@ -345,16 +422,14 @@ class FreqEvalLogic(object):
         #erB1d = pg.ErrorBarItem(size=3, pen=Gr.RED)
         #erB1d.setData(x=log_tau, y=log_dev, top=log_top, bottom=log_bot)
 
-        self._pb1.clear()
-        self._pb1.addItem(scB1)
+        plot = self._eval_plots[0].ref
+        plot.clear()
+        plot.addItem(scB1)
         for error_bar_plot in er_b1:
-            self._pb1.addItem(error_bar_plot)
-        #self._pb1.addItem(erB1a)
-        #self._pb1.addItem(erB1b)
-        #self._pb1.addItem(erB1c)
-        #self._pb1.addItem(erB1d)
-        self._pb1.setLabel('left', text="fractional ADev", units=None, unitPrefix=None)
-        self._pb1.setLabel('bottom', text="time (s)", units=None, unitPrefix=None)
+            plot.addItem(error_bar_plot)
+        plot.setLabel('left', text="fractional ADev", units=None, unitPrefix=None)
+        plot.setLabel('bottom', text="time (s)", units=None, unitPrefix=None)
+
 
     ###############################################################################################
     def open_data_file(self, filename):
@@ -397,9 +472,10 @@ class FreqEvalLogic(object):
         self.evaluation_table.update_view()
         self.gui.set_status("plotting data")
         self.plot_time_series()
-        self.gui.set_status("calculating Allan deviations")
-        adev_obj = self._data_obj.channel_adev()
-        self.plot_channel_adev(adev_obj)
+        self.gui.set_status("plotting Allan deviations")
+        self.plot_channel_adev( self._data_obj.ch_adev)
+        self.gui.set_status("plotting evaluation data")
+        self.plot_eval_time_series()
         self.gui.set_status("ok")
 
 

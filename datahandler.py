@@ -42,16 +42,15 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         super().__init__()
 
         self._logic = logic
-        self._channel_table = self._logic.channel_table
-
         self._data = None
         self._empty = True
-        self._ch_adev_obj = None
+        self.ch_adev = None
         self._tday = 0
         self._tmin = 0
         self._baselines = [0] * 4
         self.filename = None
         self.ranges = [] # holds full data range for each channel later
+        self._eval_data = [[]] # list of one empty list, will hold evaluation data later
 
     def load_file(self, filename):
         """load data from a frequency csv file"""
@@ -101,7 +100,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
 
         self._data[:, COL.TIME] -= self._tmin
 
-        baselines = self._channel_table.baselines()
+        baselines = self._logic.channel_table.baselines()
         print("baselines: ", baselines)
 
         self.ranges = []
@@ -127,18 +126,19 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             row[COL.FLAG] &= bitmask
             row[COL.FLAG] |= row[COL.FLAG] >> 24
         
-        tolerances = self._channel_table.tolerances()
+        tolerances = self._logic.channel_table.tolerances()
         # print("tolerances: ", tolerances)
-        is_critical = self._channel_table.filter_state()
+        is_critical = self._logic.channel_table.filter_state()
         # print("apply filters: ", filters)
         self.filter_unlocked(tolerances, is_critical, overhangs)
         self.filter_outliers(threshold, is_critical, overhangs)
         self.filter_gather_results()
 
-        new_adev_obj = self.evaluate_data()
-        if new_adev_obj:
-            self._ch_adev_obj = new_adev_obj
-
+        # update self._ch_adev
+        self._evaluate_ch_data()
+        # extract deviation time series and evaluate overall results
+        self._evaluate_eval_data()
+       
 
     ########################################################################################
     def load_maskfile(self, maskfile):
@@ -251,6 +251,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             )
         return(True, mask_count)
 
+    ########################################################################################
     def binary_search_data(self, time):
         """ fast search for an index corresponding to a given time """
         # fast exit if time is not in range
@@ -482,7 +483,6 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
                     if row[COL.FLAG] & flag_bit != 0:
                         row[COL.FLAG] |= 0b11111111 << 16 # flag all channels as bad-by-transfer
 
-
     ########################################################################################
     def filter_gather_results(self):
         """ gather all individual rejections into merged convenience flag """
@@ -497,7 +497,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
                 #print("   (", block, ") ", meanlist[cnt], "+-", varlist[cnt], " Hz")
 
     ########################################################################################
-    def get_good_points(self, channel_list):
+    def get_good_points_multiple(self, channel_list):
         """ get only points marked as good for all test_channels in list """
         channel_mask = 0
         col_list = [COL.TIME]
@@ -505,11 +505,41 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             if channel >= COL.CHANNELS:
                 print('channel specification ',channel,' exceeds number of channel (',COL.CHANNELS,')')
                 return None
-            channel_mask |= 1 << channel # look only at gathered flag
+            channel_mask |= (1 << channel) # look only at gathered flag
             col_list.append(COL.CH1+channel)
         #print('list of columns: ',col_list)
 #        col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
+        #print('repr of raw data: ', repr(self._data))
         col_data = self._data[:, col_list]
+        #print('repr of col data: ', repr(col_data))
+        pick_list = self._data[:, COL.FLAG] & channel_mask == 0
+        data = col_data[pick_list]
+        #print('repr of sel data: ', repr(data))
+        return data
+
+    ########################################################################################
+    def get_evaluation_points(self, eval_index):
+        """ get time series data for evaluation """
+        if eval_index >= len(self._eval_data):
+            print(
+                'evaluation specification ', eval_index,
+                ' exceeds number of evaluations (', len(self._eval_data),')'
+                )
+            return []
+        return self._eval_data[eval_index]
+            
+    ########################################################################################
+    def get_good_points(self, channel):
+        """ get only points marked as good for all test_channels in list """
+#        col_list = [COL.TIME]
+        if channel >= COL.CHANNELS:
+            print('channel specification ',channel,' exceeds number of channel (',COL.CHANNELS,')')
+            return None
+        channel_mask = (1 << channel) # look only at gathered flag
+        #col_list.append(COL.CH1+channel)
+        #print('list of columns: ',col_list)
+#        col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
+        col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
         pick_list = self._data[:, COL.FLAG] & channel_mask == 0
         data = col_data[pick_list]
         range_info = RangeInformation()
@@ -517,7 +547,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         range_info.y_max = data[:, 1].max()
         range_info.t_min = data[0, 0]
         range_info.t_max = data[-1, 0]
-        return col_data[pick_list], range_info
+        return data, range_info
 
     ########################################################################################
     def get_mskd_points(self, channel):
@@ -561,20 +591,20 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         return self._tmin
 
     ########################################################################################
-    def evaluate_data(self):
+    def _evaluate_ch_data(self):
         """ evaluate filtered data """
         new_adev_obj = ADevData(COL.CHANNELS) # make new object to store ADev data
-        reference_values = self._channel_table.adev_ref()
+        reference_values = self._logic.channel_table.adev_ref()
 
         for ch_index in range(COL.CHANNELS):
             # TODO: This should not collect good data again, but use a buffered copy
-            data, range_info = self.get_good_points([ch_index])
+            data, range_info = self.get_good_points(ch_index)
             del range_info
             times = data[:,0]
             values = data[:,1]
             meanval = np.mean(values)
             #print("mean of channel ",ch_index+1," is ",meanval)
-            self._channel_table.set_mean(ch_index, meanval)
+            self._logic.channel_table.set_mean(ch_index, meanval)
             # TODO: extract rate from data, adjust for deadtime?
             rate = 1 # one datapoint per second
             (taus_used, adev, adeverror, adev_n) = allantools.oadev(
@@ -591,13 +621,100 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             new_adev_obj.add_data(ch_index, taus_used, adev, adeverror)
         #update overall adev object
         # TODO: error handling / consistency check?
-        self._ch_adev_obj = new_adev_obj
+        self.ch_adev = new_adev_obj
 
-    def channel_adev(self):
-        """ get ADev data object used for single channel data """
-        return self._ch_adev_obj
-        #print("adev_n",adev_n)
+    ########################################################################################
+    def _evaluate_eval_data(self):
+        """ evaluate filtered data """
+        self._eval_data = []
+        for cnt in range(self._logic.num_evaluations):
+            params = self._logic.evaluation_table.parameters[cnt]
+            if params['type'] == 1: # absolute frequency mode
+                # print('(evaluation ',cnt,') absolute frequency : ',params['name'])
+                # absolute frequency in terms of maser reference is:
+                # f = fCEO + "n_a" * frep + f_beat
+                # f = fCEO(MEASURED) + "n_a"/"n_r" * frep(MEASURED) + f_beat(MEASURED) 
+                # f = baseline + fCEO(DEVIATION) + "n_a"/"n_r" * frep(DEVIATION) + f_beat(DEVIATION)
+                # negative channel indices indicate negative beat frequencies
+                ch_ceo = params['ch_ceo']-1
+                if ch_ceo < 0:
+                    s_ceo = -1 # set negative sign
+                else:
+                    s_ceo = +1 # set positive sign
+                ch_ceo = int(abs(ch_ceo))
+                ch_rep = int(abs(params['ch_rep'])-1)  # repetition rate is always positive
+                n_rep = params['n_rep'] # set f_rep harmonic
+                n_a = abs(params['n_a']) # set line index
+                ch_a = int(params['ch_a']-1)
+                if ch_a < 0:
+                    s_a = -1 # set negative sign
+                else:
+                    s_a = +1 # set positive sign
+                ch_a = int(abs(ch_a))
 
+                #print('calculating relative frequency as:')
+                #outstring = '{:+2.0f}*(CH{:1.0f}) {:+2.0f}*(CH{:1.0f})/{:2.0f} {:+2.0f}*(CH{:1.0f})'.format(
+                #    s_ceo, ch_ceo,
+                #    n_a, ch_rep, n_rep,
+                #    s_a, ch_a
+                #)
+                #print(outstring)
+                data= self.get_good_points_multiple((ch_ceo, ch_rep, ch_a))
+                row_vector = np.array([0, s_ceo, n_a/n_rep, s_a], dtype=np.float64) # relative frequency, see above
+                multiplier = float(params['multiplier'])
+                print('multiplier: ',multiplier)
+                row_vector *= multiplier  # correction for In frequency
+                values = data.dot(row_vector)                
+                times = data[:,0]
+                # print('shape of ...times:', times.shape, ' ...values', values.shape )                
+                rel_data = np.column_stack((times, values))                
+                #print('shape of resulting relative data: ', rel_data.shape)
+                #print('repr. of resulting relative data: ', repr(rel_data))
+                self._eval_data.append(rel_data)
+
+            elif params['type'] == 2: # frequency ratio mode                
+                print('(evaluation ',cnt,') frequency ratio    : ',params['name'])
+                # frequency ratio is relative to comb line ratio is:
+                # R = r_ab + ( (fCEO + f_a) - r_ab ( fCEO + f_b ) ) / (n_b f_rep + fCEO + f_b)
+                # R = r_ab + ( (fCEO + f_a) - r_ab ( fCEO + f_b ) ) / f_target_b
+                #     with correction at 1E-6 relative to r_ab:
+                #     can afford 1E-13 deviation of true Sr frequency from target for 1E-19 accuracy
+                #     r_ab already contains multiplier.
+                ch_ceo = params['ch_ceo']-1
+                if ch_ceo < 0:
+                    s_ceo = -1 # set negative sign
+                else:
+                    s_ceo = +1 # set positive sign
+                ch_ceo = int(abs(ch_ceo))
+                r_ab = params['r_ab'] # set line ratio
+                ch_a = int(params['ch_a']-1)
+                if ch_a < 0:
+                    s_a = -1 # set negative sign
+                else:
+                    s_a = +1 # set positive sign
+                ch_a = int(abs(ch_a))
+                ch_b = int(params['ch_b']-1)
+                if ch_b < 0:
+                    s_b = -1 # set negative sign
+                else:
+                    s_b = +1 # set positive sign
+                ch_b = int(abs(ch_b))
+                # relative correction to ratio value
+                row_vect = np.array([0, s_ceo - s_ceo*r_ab, s_a, -s_b*r_ab], dtype=np.float64) 
+                ref_b = float(params['ref_b'])
+                print('reference (b): ', ref_b)
+                row_vect /= ref_b
+
+                data= self.get_good_points_multiple((ch_ceo, ch_a, ch_b))
+                values = data.dot(row_vector)                
+                times = data[:,0]
+                # print('shape of ...times:', times.shape, ' ...values', values.shape )                
+                rel_data = np.column_stack((times, values))                
+                #print('shape of resulting relative data: ', rel_data.shape)
+                #print('repr. of resulting relative data: ', repr(rel_data))
+                self._eval_data.append(rel_data)                
+
+    ########################################################################################
     def channels(self):
         """ return number of channels in use """
         return COL.CHANNELS
