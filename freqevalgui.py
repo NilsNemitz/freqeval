@@ -9,8 +9,6 @@ Created on 2017/09/03
 # py#lint: disable=locally-disabled, redefined-variable-type
 # pylint: disable=locally-disabled, too-many-instance-attributes
 
-# import sys
-
 import os
 
 from PyQt5 import ( # pylint: disable=locally-disabled, no-name-in-module
@@ -19,12 +17,11 @@ from PyQt5 import ( # pylint: disable=locally-disabled, no-name-in-module
 from PyQt5.QtWidgets import ( # pylint: disable=locally-disabled, no-name-in-module
     QMainWindow, QMessageBox,
     #QApplication, QWidget, #QPlainTextEdit,
-    QFrame, QLabel, QTableView, #QTableWidget, QTableWidgetItem,
-    #qApp,
+    QFrame, QLabel, QTableView, QHeaderView, #QTableWidget, QTableWidgetItem,
     QFileDialog, QPushButton, QComboBox,
     QAction,
     #QHBoxLayout,
-    #QVBoxLayout,
+    QVBoxLayout,
     QGridLayout,
     #QSpacerItem,
     QSplitter, QScrollArea,
@@ -177,19 +174,34 @@ class FreqEvalMain(QMainWindow):
         edit_mask_act.setChecked(True)
         edit_mask_act.triggered.connect(self.show_msg_not_implemented)
 
-        mask_menu = menubar.addMenu('((&Mask))')
+        mask_menu = menubar.addMenu('&Mask')
         mask_menu.addAction(mask_act)
         mask_menu.addAction(edit_mask_act)
 
-        view_all_act = QAction('((View &all))', self)
+        view_all_act = QAction('View &all', self)
         view_all_act.setShortcut('Ctrl+A')
         view_all_act.setStatusTip('View all data')
         view_all_act.triggered.connect(self._logic.zoom_all)
 
-        zoom_good_act = QAction('((&Zoom good data))', self)
+        zoom_good_act = QAction('&Zoom good data', self)
         zoom_good_act.setShortcut('Ctrl+Z')
         zoom_good_act.setStatusTip('Zoom in to show only good data')
         zoom_good_act.triggered.connect(self._logic.zoom_good)
+
+        view1_act = QAction('View &1: Channels', self)
+        view1_act.setShortcut('Ctrl+1')
+        view1_act.setStatusTip('Arrange graphs for inspection of single channel data')
+        view1_act.triggered.connect(self.show_msg_not_implemented)
+
+        view2_act = QAction('View &2: Evaluation', self)
+        view2_act.setShortcut('Ctrl+2')
+        view2_act.setStatusTip('Arrange graphs for inspection of evaluation data')
+        view2_act.triggered.connect(self.show_msg_not_implemented)
+
+        view3_act = QAction('View &3: Results', self)
+        view3_act.setShortcut('Ctrl+3')
+        view3_act.setStatusTip('Arrange graphs to give an overview of results')
+        view3_act.triggered.connect(self.show_msg_not_implemented)
 
         redraw_act = QAction('&Redraw', self)
         redraw_act.setShortcut('Ctrl+R')
@@ -199,6 +211,9 @@ class FreqEvalMain(QMainWindow):
         mask_menu = menubar.addMenu('&View')
         mask_menu.addAction(view_all_act)
         mask_menu.addAction(zoom_good_act)
+        mask_menu.addAction(view1_act)
+        mask_menu.addAction(view2_act)
+        mask_menu.addAction(view3_act)        
         mask_menu.addAction(redraw_act)
 
         #self.settings.setValue('windowposition', self.pos())
@@ -252,14 +267,41 @@ class FreqEvalMain(QMainWindow):
         self._mask_channel_box.addItem('ch 4', 0b00001000)
         self._mask_channel_box.addItem( 'all', 0b11111111)
 
+        view_label = QLabel("Quick view")
+        view_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)        
+        view_label.setStyleSheet("font-weight: bold;")
+        view_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        view_button1 = QPushButton('1: channels')
+
+        self.show_msg_not_implemented
+        view_button1.setStyleSheet("text-align: left;")
+        view_button1.clicked.connect(self.show_msg_not_implemented)
+        view_button2 = QPushButton('2: evaluation')
+        view_button2.setStyleSheet("text-align: left;")
+        view_button2.clicked.connect(self.show_msg_not_implemented)
+        view_button3 = QPushButton('3: results')
+        view_button3.setStyleSheet("text-align: left;")
+        view_button3.clicked.connect(self.show_msg_not_implemented)
+        spacer = QLabel('')
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
         mask_frame = QFrame()
+        mask_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
         mask_frame_layout = QGridLayout(mask_frame)
+        mask_frame_layout.setVerticalSpacing(2)
         mask_frame_layout.setContentsMargins(0, 0, 0, 0)
         mask_frame_layout.addWidget(mask_title_label, 0, 0, 1, 1)
-        mask_frame_layout.addWidget(self._mask_channel_box, 1, 0, 1, 1)
-        mask_frame_layout.addWidget(mask_button, 2, 0, 1, 1)
-        mask_frame_layout.addWidget(mask_table, 0, 1, 3, 1)
-
+        mask_frame_layout.addWidget(self._mask_channel_box, 2, 0, 1, 1)
+        mask_frame_layout.addWidget(mask_button, 3, 0, 1, 1)
+        mask_frame_layout.addWidget(mask_table, 0, 1, 4, 1)
+        mask_frame_layout.addWidget(spacer, 0, 2, 1, 1)
+        mask_frame_layout.addWidget(view_label, 0, 3, 1, 1)
+        mask_frame_layout.addWidget(view_button1, 1, 3, 1, 1)
+        mask_frame_layout.addWidget(view_button2, 2, 3, 1, 1)
+        mask_frame_layout.addWidget(view_button3, 3, 3, 1, 1)
+        
         ### scrollable sub-frame for results and configuration tables
         hor_spacer = QFrame()
         hor_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -297,9 +339,11 @@ class FreqEvalMain(QMainWindow):
         self._adev_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._adev_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         vheader = self._adev_table_view.verticalHeader()
-        #hheader = self._adev_table_view.horizontalHeader()
         vheader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
         vheader.setMaximumSectionSize(row_height)
+        hheader = self._adev_table_view.horizontalHeader()
+        hheader.setSectionResizeMode(QHeaderView.Stretch)
+
         self._adev_table_view.resizeRowsToContents()
         self._adev_table_view.resizeColumnsToContents()
         self._adev_table_view.setFixedHeight(vheader.length()+2)
@@ -312,6 +356,7 @@ class FreqEvalMain(QMainWindow):
         self._evaluation_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         hheader = self._evaluation_table_view.horizontalHeader()
         hheader.hide()
+        hheader.setSectionResizeMode(QHeaderView.Stretch)
         vheader = self._evaluation_table_view.verticalHeader()
         vheader.setSectionResizeMode(QtWidgets.QHeaderView.Fixed) # pylint: disable=locally-disabled, no-member
         vheader.setMaximumSectionSize(row_height)
@@ -330,21 +375,16 @@ class FreqEvalMain(QMainWindow):
         ### full size frame to hold the evaluation results
         results_frame = QFrame()
         results_frame.setContentsMargins(0, 0, 0, 0)
-        #results_frame_layout = QVBoxLayout(results_frame)        
-        results_frame_layout = QGridLayout(results_frame)
-        results_frame_layout.addWidget(mask_frame, 0, 0, 1 ,1)
-        results_frame_layout.addWidget(hor_spacer, 0, 1, 1 ,1)
-        results_frame_layout.addWidget(channel_table_title_label, 1, 0, 1 ,2)
-        #
-        #mask_channel_box.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        #results_frame_layout.addWidget(mask_channel_box, 1, 0, 1, 2)
-        #
-        results_frame_layout.addWidget(self._channel_table, 2, 0, 1, 2)
-        results_frame_layout.addWidget(evaluation_table_title_label, 3, 0, 1, 2)
-        results_frame_layout.addWidget(self._evaluation_table_view, 4, 0, 1, 2)
-        results_frame_layout.addWidget(ch_adev_table_title_label, 5, 0, 1, 2)
-        results_frame_layout.addWidget(self._adev_table_view, 6, 0, 1, 2)
-
+        results_frame_layout = QVBoxLayout(results_frame)
+        
+        results_frame_layout.addWidget(mask_frame)
+        results_frame_layout.addWidget(channel_table_title_label)
+        results_frame_layout.addWidget(self._channel_table)
+        results_frame_layout.addWidget(evaluation_table_title_label)
+        results_frame_layout.addWidget(self._evaluation_table_view)
+        results_frame_layout.addWidget(ch_adev_table_title_label)
+        results_frame_layout.addWidget(self._adev_table_view)
+        
         ### create scrollable area to wrap results frame ###
         scroll_area = QScrollArea()
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -383,12 +423,6 @@ class FreqEvalMain(QMainWindow):
         #self.disp_radio_raw = QRadioButton("raw readout")
         #self.disp_radio_raw.page = 1 # --> corresponds to setting page 1
         #self.disp_radio_raw.toggled.connect(self.disp_radio_toggled)
-        #disp_interval_label = QLabel("measure frequency over:")
-        #self._disp_avg_combo = QComboBox()
-        #self._disp_avg_combo.addItem("integrate 0.1 s")
-        #self._disp_avg_combo.addItem("integrate   3 s")
-        #self._disp_avg_combo.setCurrentIndex(-1)
-        #self._disp_avg_combo.currentIndexChanged.connect(self.disp_combo_changed)
 
         #########################################################################
         # overall layout:
@@ -446,35 +480,7 @@ class FreqEvalMain(QMainWindow):
         self._settings.setValue('windowposition', self.pos())
         self._settings.setValue('windowsize', self.size())
         self._settings.setValue('basepath', self._base_path)
-
-
-        #self.settings.setValue('display_size', int(index))
-        #labels = []
-        #for cnt in range(self._freq_box_number):
-        #    labels.append(self._freq_box[cnt].get_label())
-        #self.settings.setValue('labels', labels)
-        #index = self._size_combo.currentIndex()
-        #autosync_state = self._fxe_autosync_check.isChecked()
-        #self.settings.setValue('autosync', autosync_state)
-        #index = self._fxe_mode_combo.currentIndex()
-        #if index >= 0:
-        #    self.settings.setValue('fxe_mode', int(index))
-        #
-        #index = self._disp_avg_combo.currentIndex()
-        #self.settings.setValue('integrate_setting', int(index))
-        #
-        #string = self._labrad_manager_line.text()
-        #self.settings.setValue('labrad_manager', string)
-        #state = self._store_phase_file_check.isChecked()
-        #self.settings.setValue('store_phase', state)
-        #state = self._store_freq_file_check.isChecked()
-        #self.settings.setValue('store_frequency', state)
-        #state = self._store_labrad_check.isChecked()
-        #self.settings.setValue('stream_labrad', state)
-
         #self.logic.shutdown()
-
-        self._settings.setValue('basepath', self._base_path)
 
 def logo():
     """define logo pixmap"""

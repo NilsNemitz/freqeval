@@ -1,4 +1,5 @@
 *.dll
+*.bak
 __pycache__/*
 **.cpython-36.pyc
 allantools*

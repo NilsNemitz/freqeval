@@ -29,11 +29,9 @@ class ChannelADevTableModel(QtCore.QAbstractTableModel):
     def __init__(self, parent, logic):
         super().__init__(parent)
         self._logic = logic
-        self._channel_table = self._logic.channel_table
-        print("channel table: ", self._channel_table)
 
     def columnCount(self, parent):
-        return self._channel_table.rowCount(parent)
+        return self._logic.channel_table.count
 
     def rowCount(self, parent):
         return self.ROW_NUMBER
@@ -97,12 +95,13 @@ class ChannelADevTableModel(QtCore.QAbstractTableModel):
 
         if row == 0:
             if role == Qt.DisplayRole:
-                index = self._channel_table.createIndex(col, 0)
-                name = self._channel_table.data(index, Qt.DisplayRole)
+                name = self._logic.channel_table.parameters[col]['name'].decode('UTF-8')
+                #index = self._logic.channel_table.createIndex(col, 0)
+                #name = self._channel_table.data(index, Qt.DisplayRole)
                 return "ch"+str(col+1)+" ("+name+")"
-                return
+                #return
             elif role == Qt.BackgroundColorRole:
-                color = self._logic.channel_color_list[col]
+                color = self._logic.channel_table.parameters[col]['color']
                 return color
                 #return QtGui.QColor(214,  73, 183)
 
@@ -148,33 +147,3 @@ class ChannelADevTableModel(QtCore.QAbstractTableModel):
                 return Qt.AlignRight
 
         return None
-
-    #def filter_state(self):
-    #    """ getter function for channel filter toggles """
-    #    return self.data['filt']
-
-    #def baselines(self):
-    #    """ getter function for baseline values """
-    #    return self.data['base']
-    
-    #def bands(self):
-    #    """ getter function for band restriction for unlock filter """
-    #    return self.data['band']
-
-    #def adev_ref(self):
-    #    """ getter function for ADev reference value """
-    #    return self.data['aref']
-
-    #def set_mean(self, index, value):
-    #    """ setter function for mean value """
-    #    if index < 0 or index >= self.ROW_NUMBER:
-    #        return
-    #    self.data[index]['mean'] = value + self.data[index]['base']
-
-    #def print_data(self):
-    #    """ debug print of table status """
-    #    print(self.data['mean'])
-        
-
-
-        

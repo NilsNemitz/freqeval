@@ -100,7 +100,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
 
         self._data[:, COL.TIME] -= self._tmin
 
-        baselines = self._logic.channel_table.baselines()
+        baselines = self._logic.channel_table.parameters['base']
         print("baselines: ", baselines)
 
         self.ranges = []
@@ -126,19 +126,13 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             row[COL.FLAG] &= bitmask
             row[COL.FLAG] |= row[COL.FLAG] >> 24
         
-        tolerances = self._logic.channel_table.tolerances()
+        tolerances = self._logic.channel_table.parameters['tole']
         # print("tolerances: ", tolerances)
-        is_critical = self._logic.channel_table.filter_state()
+        is_critical = self._logic.channel_table.parameters['filt']
         # print("apply filters: ", filters)
         self.filter_unlocked(tolerances, is_critical, overhangs)
         self.filter_outliers(threshold, is_critical, overhangs)
         self.filter_gather_results()
-
-        # update self._ch_adev
-        self._evaluate_ch_data()
-        # extract deviation time series and evaluate overall results
-        self._evaluate_eval_data()
-       
 
     ########################################################################################
     def load_maskfile(self, maskfile):
@@ -591,10 +585,10 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         return self._tmin
 
     ########################################################################################
-    def _evaluate_ch_data(self):
+    def evaluate_ch_data(self):
         """ evaluate filtered data """
         new_adev_obj = ADevData(COL.CHANNELS) # make new object to store ADev data
-        reference_values = self._logic.channel_table.adev_ref()
+        reference_values = self._logic.channel_table.parameters['aref']
 
         for ch_index in range(COL.CHANNELS):
             # TODO: This should not collect good data again, but use a buffered copy
@@ -624,11 +618,12 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         self.ch_adev = new_adev_obj
 
     ########################################################################################
-    def _evaluate_eval_data(self):
+    def evaluate_eval_data(self):
         """ evaluate filtered data """
         self._eval_data = []
-        for cnt in range(self._logic.num_evaluations):
+        for cnt in range(self._logic.evaluation_table.count):
             params = self._logic.evaluation_table.parameters[cnt]
+            ###########################################################################
             if params['type'] == 1: # absolute frequency mode
                 # print('(evaluation ',cnt,') absolute frequency : ',params['name'])
                 # absolute frequency in terms of maser reference is:
@@ -662,18 +657,13 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
                 data= self.get_good_points_multiple((ch_ceo, ch_rep, ch_a))
                 row_vector = np.array([0, s_ceo, n_a/n_rep, s_a], dtype=np.float64) # relative frequency, see above
                 multiplier = float(params['multiplier'])
-                print('multiplier: ',multiplier)
+                # print('multiplier: ',multiplier)
                 row_vector *= multiplier  # correction for In frequency
                 values = data.dot(row_vector)                
                 times = data[:,0]
-                # print('shape of ...times:', times.shape, ' ...values', values.shape )                
-                rel_data = np.column_stack((times, values))                
-                #print('shape of resulting relative data: ', rel_data.shape)
-                #print('repr. of resulting relative data: ', repr(rel_data))
-                self._eval_data.append(rel_data)
-
+            ###########################################################################
             elif params['type'] == 2: # frequency ratio mode                
-                print('(evaluation ',cnt,') frequency ratio    : ',params['name'])
+                #print('(evaluation ',cnt,') frequency ratio    : ',params['name'])
                 # frequency ratio is relative to comb line ratio is:
                 # R = r_ab + ( (fCEO + f_a) - r_ab ( fCEO + f_b ) ) / (n_b f_rep + fCEO + f_b)
                 # R = r_ab + ( (fCEO + f_a) - r_ab ( fCEO + f_b ) ) / f_target_b
@@ -700,19 +690,32 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
                     s_b = +1 # set positive sign
                 ch_b = int(abs(ch_b))
                 # relative correction to ratio value
-                row_vect = np.array([0, s_ceo - s_ceo*r_ab, s_a, -s_b*r_ab], dtype=np.float64) 
+                row_vector = np.array([0, s_ceo - s_ceo*r_ab, s_a, -s_b*r_ab], dtype=np.float64) 
+                # division by reference frequency is part of equation
+                # multiplier covers In fourth-harmonic generation
+                multiplier = float(params['multiplier'])
                 ref_b = float(params['ref_b'])
-                print('reference (b): ', ref_b)
-                row_vect /= ref_b
+                # print('multiplier: ',multiplier,'    reference (b): ', ref_b)
+                row_vector *= multiplier/ref_b
 
                 data= self.get_good_points_multiple((ch_ceo, ch_a, ch_b))
                 values = data.dot(row_vector)                
                 times = data[:,0]
-                # print('shape of ...times:', times.shape, ' ...values', values.shape )                
-                rel_data = np.column_stack((times, values))                
-                #print('shape of resulting relative data: ', rel_data.shape)
-                #print('repr. of resulting relative data: ', repr(rel_data))
-                self._eval_data.append(rel_data)                
+            ###########################################################################
+            else:
+                times = []
+                values = []
+            # print('shape of ...times:', times.shape, ' ...values', values.shape )                
+            rel_data = np.column_stack((times, values))                
+            #print('shape of resulting relative data: ', rel_data.shape)
+            #print('repr. of resulting relative data: ', repr(rel_data))
+            self._eval_data.append(rel_data)
+            self._logic.evaluation_table.set_means(
+                cnt,
+                np.mean(times),
+                np.mean(values)
+                )
+
 
     ########################################################################################
     def channels(self):

@@ -24,17 +24,15 @@ copy mean values to clipboard?
 make filter selection toggleable
 allow re-running filters for changed settings
 
-implement masking
-load/save mask to .msk file
+## done ## implement masking
+## done ## load/save mask to .msk file
 
-implement "matrix"-table for comb parameters to allow reconstruction of actual frequency
-check that baseline-subtracted data remain small enough for 1E-19 rounding errors
-calculate baseline correction for absolute frequency in arbitrary precision
+## done ## implement "matrix"-table for comb parameters to allow reconstruction of actual frequency
+## done ## check that baseline-subtracted data remain small enough for 1E-19 rounding errors
+## done ## calculate baseline correction for absolute frequency in arbitrary precision
 
 Allan deviations for individual in-loop signals
 Allan deviation for Sr/In combined signals
-
-implement "show all" and "zoom to good data" functions
 
 allow appending new data
 automate reload every X minutes
