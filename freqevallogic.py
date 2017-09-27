@@ -25,7 +25,7 @@ from freqevalconstants import Gr # color definitions
 from datahandler import DataHandler, COL, RangeInformation
 from selectiontablehandler import SelectionTableModel
 from channeltablehandler import ChannelTableModel
-from channeladevtablehandler import ChannelADevTableModel
+from adevtablehandler import ADevTableModel
 from evaluationtablehandler import EvaluationTableModel
 
 class SelectedPoints(object):
@@ -127,7 +127,7 @@ class FreqEvalLogic(object):
         print("now ", self.evaluation_table.count, " evaluations known.")
         self.evaluation_table.update()
 
-        self.adev_table = ChannelADevTableModel(None, self)
+        self.adev_table = ADevTableModel(None, self)
 
         self.gui.set_status("Writing back to configuration file")
         with open('default.cfg', 'w') as configfile:
@@ -140,9 +140,9 @@ class FreqEvalLogic(object):
     def init_graphs(self):
         """ initialize graphs after GUI has been initialized """
         self.gui.set_status("Initializing graphs")
-        self._g1 = self.gui.get_graph1_layout()
-        self._g2 = self.gui.get_graph2_layout()
-
+        self._g1 = self.gui.graph1_layout
+        self._g2 = self.gui.graph2_layout
+        self._g3 = self.gui.graph3_layout
         self.selection_table.clear()
 
         ### Initialize graph 1 ###
@@ -198,6 +198,22 @@ class FreqEvalLogic(object):
             if cnt < num_plots-1:
                 plot.getAxis('bottom').setStyle(showValues=False)
             self._eval_plots.append(PlotInformation(plot))
+
+        ### Initialize graph 3 - Allan deviations ###
+        self._g3.setSpacing(0.)
+        self._g3.setContentsMargins(0., 1., 0., 1.)
+        num_plots = 2
+        self._adev_plots = []
+        for cnt in range(num_plots):
+            name = 'plotC{:1.0f}'.format(cnt+1)
+            plot = self._g3.addPlot(row=cnt, col=0, name=name)
+            plot.setContentsMargins(0, 0, 2, 0)  # left, top, right, bottom
+            axis = plot.getAxis('left')
+            axis.setStyle(tickTextWidth=textwidth, autoExpandTextSpace=False)
+            axis = plot.getAxis('bottom')
+            axis.setStyle(tickTextWidth=textwidth, autoExpandTextSpace=False)
+            self._adev_plots.append(PlotInformation(plot))
+
 
     ###############################################################################################
     def _clicked_point(self, plot, points):

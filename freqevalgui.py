@@ -229,12 +229,19 @@ class FreqEvalMain(QMainWindow):
         graph1 = pg.GraphicsView()
         graph1.setCentralItem(self.graph1_layout)
 
-        ### sub-frame for ADev graph (bottom region) ###
+        ### sub-frame for evaluation time series graph (bottom region) ###
         self.graph2_layout = pg.GraphicsLayout()
         self.graph2_layout.setSpacing(0.)
         self.graph2_layout.setContentsMargins(0., 10., 0., 0.)
         graph2 = pg.GraphicsView()
         graph2.setCentralItem(self.graph2_layout)
+
+        ### sub-frame for ADev graphs (middle column) ###
+        self.graph3_layout = pg.GraphicsLayout()
+        self.graph3_layout.setSpacing(0.)
+        self.graph3_layout.setContentsMargins(0., 10., 0., 0.)
+        self._adev_graph_widget = pg.GraphicsView()
+        self._adev_graph_widget.setCentralItem(self.graph3_layout)        
 
         ### subframe (in scrollpanel?) for masking controls / selection readout
         mask_title_label = QLabel("Data selection")
@@ -335,7 +342,7 @@ class FreqEvalMain(QMainWindow):
         self._adev_table_view = QTableView()
         self._adev_table_view.setModel(self._logic.adev_table)
         self._adev_table_view.horizontalHeader().hide()
-        self._adev_table_view.verticalHeader().hide()
+        # self._adev_table_view.verticalHeader().hide()
         self._adev_table_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._adev_table_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         vheader = self._adev_table_view.verticalHeader()
@@ -397,9 +404,6 @@ class FreqEvalMain(QMainWindow):
         scroll_area.setMinimumWidth(width1 + width2)
         # extend width so that vertical bar does not overlap
 
-        #self._freq_box = []
-        #for i in range(self._freq_box_number):
-        #    self._freq_box.append(FrequencyBox(i))
         #self.mini_log_text = QPlainTextEdit()
         #self.mini_log_text.setReadOnly(True)
         #self.mini_log_text.setMaximumBlockCount(4)
@@ -408,15 +412,6 @@ class FreqEvalMain(QMainWindow):
         #self.mini_log_text.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         #self.mini_log_text.setStyleSheet('font: 8pt "Consolas";')
         #self.mini_log_text.setWordWrapMode(QTextOption.NoWrap)
-
-        #self.log_text = QPlainTextEdit()
-        #self.log_text.setReadOnly(True)
-        #self.log_text.setMaximumBlockCount(100)
-        #self.log_text.setStyleSheet('font: 8pt "Consolas";')
-        #self.log_text.setWordWrapMode(QTextOption.NoWrap)
-
-        #disp_head_label = QLabel("display settings")
-        #disp_head_label.setStyleSheet("font-weight: bold;")
         #self.disp_radio_freq = QRadioButton("frequencies")
         #self.disp_radio_freq.page = 0 # --> corresponds to setting page 0
         #self.disp_radio_freq.toggled.connect(self.disp_radio_toggled)
@@ -426,29 +421,32 @@ class FreqEvalMain(QMainWindow):
 
         #########################################################################
         # overall layout:
-        self._graph_widget = QSplitter(Qt.Vertical)
-        self._graph_widget.addWidget(graph1)
-        self._graph_widget.addWidget(graph2)
-        self._graph_widget.setStretchFactor(0, 3)
-        self._graph_widget.setStretchFactor(1, 1)
+        self._time_graph_widget = QSplitter(Qt.Vertical)
+        self._time_graph_widget.addWidget(graph1)
+        self._time_graph_widget.addWidget(graph2)
+        self._time_graph_widget.setStretchFactor(0, 3)
+        self._time_graph_widget.setStretchFactor(1, 1)
 
         self._main_widget = QSplitter(Qt.Horizontal)
-        self._main_widget.addWidget(self._graph_widget)
+        self._main_widget.addWidget(self._time_graph_widget)
+        self._main_widget.addWidget(self._adev_graph_widget)
         self._main_widget.addWidget(scroll_area)
-        self._main_widget.setStretchFactor(0, 1)
-        self._main_widget.setStretchFactor(1, 0)
+        self._main_widget.setStretchFactor(0, 3)
+        self._main_widget.setStretchFactor(1, 1)
+        self._main_widget.setStretchFactor(2, 0)
         self.setCentralWidget(self._main_widget)
+
+        sizes = self._main_widget.sizes()
+        available = sizes[0] + sizes[1]
+        new0 = int(0.7 * available)
+        new1 = int(0.3 * available)
+        new2 = sizes[2]
+        print('sizes: ',new0, new0, new2)
+        #self._main_widget.setSizes([new0, new1, new2])
+
 
     def init_state(self):
         """ initialize remaining settings after logic has started """
-
-    def get_graph1_layout(self):
-        """return handle for graph 1 window as layout"""
-        return self.graph1_layout
-
-    def get_graph2_layout(self):
-        """return handle for graph 2 window as layout"""
-        return self.graph2_layout
 
     def get_mask_flags(self):
         index = int(self._mask_channel_box.currentIndex())
