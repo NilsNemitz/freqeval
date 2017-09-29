@@ -138,16 +138,20 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
     def load_maskfile(self, maskfile):
         """load data from a frequency csv file"""
         col_names = ['chan','day', 'start', 'end']
-        maskdata = pandas.read_csv(
-            maskfile,
-            header=0, names=col_names,
-            engine='c',
-            error_bad_lines=False,
-            warn_bad_lines=True,
-            parse_dates=['start','end'],
-            #dtype = ['int32', 'int32', 'string', 'string']#,
-            converters={"chan": lambda x: int(x, 2)}
-        )
+        try:
+            maskdata = pandas.read_csv(
+                maskfile,
+                header=0, names=col_names,
+                engine='c',
+                error_bad_lines=False,
+                warn_bad_lines=True,
+                parse_dates=['start','end'],
+                #dtype = ['int32', 'int32', 'string', 'string']#,
+                converters={"chan": lambda x: int(x, 2)}
+            )
+        except FileNotFoundError as error:
+            print("no mask file found.")
+            maskdata = []
         for index in range(len(maskdata)):
             # convert to timestamp relative to data reference point of previous UTC midnight
             start_timestring = maskdata.ix[index, 'start']
