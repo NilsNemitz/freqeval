@@ -273,6 +273,7 @@ class FreqEvalMain(QMainWindow):
         self._mask_channel_box.addItem('ch 3', 0b00000100)
         self._mask_channel_box.addItem('ch 4', 0b00001000)
         self._mask_channel_box.addItem( 'all', 0b11111111)
+        self._mask_channel_box.setCurrentIndex(4)
 
         view_label = QLabel("Quick view")
         view_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)        

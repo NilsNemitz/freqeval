@@ -22,7 +22,7 @@ import numpy as np
 # import math
 
 from freqevalconstants import Gr # color definitions
-from datahandler import DataHandler, COL, RangeInformation
+from datahandler import DataHandler, COL
 from selectiontablehandler import SelectionTableModel
 from channeltablehandler import ChannelTableModel
 from adevtablehandler import ADevTableModel
@@ -40,8 +40,9 @@ class PlotInformation(object):
     """ stores reference to individual plots and their min/max values """
     def __init__(self, reference):
         self.ref = reference
-        self.good = RangeInformation()
-        self.full = RangeInformation()
+        # These will hold range information dictionary later
+        self.good = None 
+        self.full = None
 
 class FreqEvalLogic(object):
     """program logic class for frequency evaluation program"""
@@ -323,12 +324,13 @@ class FreqEvalLogic(object):
         t_max = -1E15
         for plot in self._ch_plots:
             # set vertical axis for each channel:
-            plot.ref.setYRange(plot.good.y_min, plot.good.y_max, padding=0.01)
+            if plot.good:
+                plot.ref.setYRange(plot.good['y_min'], plot.good['y_max'], padding=0.01)
             # find combined maxima for all time axes:
-            if plot.good.t_min < t_min:
-                t_min = plot.good.t_min
-            if plot.good.t_max > t_max:
-                t_max = plot.good.t_max
+            if plot.good and plot.good['t_min'] < t_min:
+                t_min = plot.good['t_min']
+            if plot.good and plot.good['t_max'] > t_max:
+                t_max = plot.good['t_max']
         # time axes are linked to plot 0:
         self._ch_plots[0].ref.setXRange(t_min, t_max, padding=0.01)
         self.gui.set_status('ok')
@@ -342,12 +344,12 @@ class FreqEvalLogic(object):
         t_max = -1E15
         for plot in self._ch_plots:
             # set vertical axis for each channel:
-            plot.ref.setYRange(plot.all.y_min, plot.all.y_max, padding=0.01)
+            plot.ref.setYRange(plot.all['y_min'], plot.all['y_max'], padding=0.01)
             # find combined maxima for all time axes:
-            if plot.all.t_min < t_min:
-                t_min = plot.all.t_min
-            if plot.all.t_max > t_max:
-                t_max = plot.all.t_max
+            if plot.all['t_min'] < t_min:
+                t_min = plot.all['t_min']
+            if plot.all['t_max'] > t_max:
+                t_max = plot.all['t_max']
         # time axes are linked to plot 0:
         self._ch_plots[0].ref.setXRange(t_min, t_max, padding=0.01)
         self.gui.set_status('ok')

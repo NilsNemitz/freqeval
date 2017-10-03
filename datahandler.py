@@ -29,13 +29,6 @@ class COL(object):
     # maps zero-based indices to offset indices in full data array
     CHANNELS = 4
 
-class RangeInformation(object):
-    """ stores minimum/maximum values for plots """
-    def __init__(self):
-        self.t_min = self.t_max = 0
-        self.y_min = self.y_max = 0
-
-
 class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance-attributes
     """manage frequency data loading/streaming"""
     def __init__(self, logic):
@@ -43,6 +36,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
 
         self._logic = logic
         self._data = None
+        self._cache = {}
         self._empty = True
         self.ch_adev = None
         self._tday = 0
@@ -71,7 +65,9 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             )
         # print(df.dtypes)
         self._data = data_frame.as_matrix() # pylint: disable=locally-disabled, no-member
+        self._cache = {} # clear cache
         del data_frame
+
         # print(self.data[:, COL.STAT])
 
         # append a new column of uint16 zeros to indicate status flags
@@ -100,6 +96,9 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
 
         self._data[:, COL.TIME] -= self._tmin
 
+        all_time_steps = self._data[1:-1, COL.TIME] - self._data[0:-2, COL.TIME]
+        self._logic.adev_table.generate_taus(np.median(all_time_steps))
+
         baselines = self._logic.channel_table.parameters['base']
         print("baselines: ", baselines)
 
@@ -107,11 +106,16 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         # TODO: can this be handled in a way that allows changing it for already loaded data?
         for index in range(COL.CHANNELS):
             self._data[:, COL.COLS[index]] -= baselines[index]
-            this_range = RangeInformation()        
-            this_range.y_min = self._data[:, COL.COLS[index]].min()
-            this_range.y_max = self._data[:, COL.COLS[index]].max()
-            this_range.t_min = self._data[0, COL.TIME]
-            this_range.t_max = self._data[-1, COL.TIME]
+            if len(self._data) < 1:
+                this_range = {
+                    'y_min' : -1, 'y_max' : 1, 't_min' : 0, 't_max' : 1
+                    }
+            else:
+                this_range = {}
+                this_range['y_min'] = self._data[:, COL.COLS[index]].min()
+                this_range['y_max'] = self._data[:, COL.COLS[index]].max()
+                this_range['t_min'] = self._data[0, COL.TIME]
+                this_range['t_max'] = self._data[-1, COL.TIME]
             self.ranges.append(this_range)
 
         return len(self._data)
@@ -133,6 +137,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         self.filter_unlocked(tolerances, is_critical, overhangs)
         self.filter_outliers(threshold, is_critical, overhangs)
         self.filter_gather_results()
+        self._cache = {} # clear cache
 
     ########################################################################################
     def load_maskfile(self, maskfile):
@@ -243,6 +248,8 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             maskdata = maskdata.iloc[postponed_indices,:].reset_index(drop=True)
             #print('maskdata: ',maskdata)
         # end of main while loop
+        if mask_count > 0:
+            self._cache = {} # clear cache
         print(
             'done, masked ', mask_count, 
             ' data points. Mask block remaining: ', len(maskdata)
@@ -302,6 +309,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         
         print('Mask: masking points from index ', start_index, ' to ', end_index)
         self._data[int(start_index):int(end_index+1), COL.FLAG] |= flags
+        self._cache = {} # clear cache
         return end_index - start_index + 1
     
     ########################################################################################
@@ -508,12 +516,46 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         #print('list of columns: ',col_list)
 #        col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
         #print('repr of raw data: ', repr(self._data))
-        col_data = self._data[:, col_list]
-        #print('repr of col data: ', repr(col_data))
-        pick_list = self._data[:, COL.FLAG] & channel_mask == 0
-        data = col_data[pick_list]
+        if channel_mask in self._cache:
+            print('using cached copy for bitmask {:8b}'.format(channel_mask))            
+        else:
+            col_data = self._data[:, col_list]
+            #print('repr of col data: ', repr(col_data))
+            pick_list = self._data[:, COL.FLAG] & channel_mask == 0
+            self._cache[channel_mask] = col_data[pick_list]
+            print('cached data for bitmask {:8b}'.format(channel_mask))
         #print('repr of sel data: ', repr(data))
-        return data
+        return self._cache[channel_mask]
+            
+    ########################################################################################
+    def get_good_points(self, channel):
+        """ get only points marked as good for all test_channels in list """
+#        col_list = [COL.TIME]
+        if channel >= COL.CHANNELS:
+            print('channel specification ',channel,' exceeds number of channel (',COL.CHANNELS,')')
+            return None
+        channel_mask = (1 << channel) # look only at gathered flag
+        #col_list.append(COL.CH1+channel)
+        if channel_mask in self._cache:
+            print('using cached copy for bitmask {:8b}'.format(channel_mask))
+        else:
+            col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
+            pick_list = self._data[:, COL.FLAG] & channel_mask == 0
+            self._cache[channel_mask] = col_data[pick_list]
+            print('cached data for bitmask {:8b}')
+        data = self._cache[channel_mask]
+        #print('repr of sel data: ', repr(data))
+        if len(data)<1:
+            range_info = {
+                'y_min' : -1, 'y_max' : 1, 't_min' : 0, 't_max' : 1
+                }
+        else:
+            range_info = {}
+            range_info['y_min'] = data[:, 1].min()
+            range_info['y_max'] = data[:, 1].max()
+            range_info['t_min'] = data[0, 0]
+            range_info['t_max'] = data[-1, 0]
+        return data, range_info
 
     ########################################################################################
     def get_evaluation_points(self, eval_index):
@@ -525,27 +567,6 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
                 )
             return []
         return self._eval_data[eval_index]
-            
-    ########################################################################################
-    def get_good_points(self, channel):
-        """ get only points marked as good for all test_channels in list """
-#        col_list = [COL.TIME]
-        if channel >= COL.CHANNELS:
-            print('channel specification ',channel,' exceeds number of channel (',COL.CHANNELS,')')
-            return None
-        channel_mask = (1 << channel) # look only at gathered flag
-        #col_list.append(COL.CH1+channel)
-        #print('list of columns: ',col_list)
-#        col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
-        col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
-        pick_list = self._data[:, COL.FLAG] & channel_mask == 0
-        data = col_data[pick_list]
-        range_info = RangeInformation()
-        range_info.y_min = data[:, 1].min()
-        range_info.y_max = data[:, 1].max()
-        range_info.t_min = data[0, 0]
-        range_info.t_max = data[-1, 0]
-        return data, range_info
 
     ########################################################################################
     def get_mskd_points(self, channel):
@@ -603,23 +624,17 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             meanval = np.mean(values)
             #print("mean of channel ",ch_index+1," is ",meanval)
             self._logic.channel_table.set_mean(ch_index, meanval)
-            # TODO: extract rate from data, adjust for deadtime?
-            rate = 1 # one datapoint per second
-            (taus_used, adev, adeverror, adev_n) = allantools.oadev(
-                values, data_type='freq', rate=rate, taus='decade'
+            adev = allantools.Dataset(
+                data=values, 
+                rate=self._logic.adev_table.time_step,
+                data_type='freq',
+                taus=self._logic.adev_table.tau_values
                 )
-            # scale to fractional values according to table settings
-            adev /= reference_values[ch_index]
-            adeverror /= reference_values[ch_index]
-            #print('channel index: ', index)
-            #print('taus: ',taus_used)
-            #print('adev: ',adev)
-            #print("adeverror: ",adeverror)
-            del adev_n
-            new_adev_obj.add_data(ch_index, taus_used, adev, adeverror)
-        #update overall adev object
-        # TODO: error handling / consistency check?
-        self.ch_adev = new_adev_obj
+            # TODO: set status here
+            print("computing ADev for channel ",ch_index)
+            adev.compute('oadev')
+            print('taus: ',adev.out['taus'])
+            self._logic.adev_table.add_channel_adev(ch_index, adev, reference_values[ch_index])
 
     ########################################################################################
     def evaluate_eval_data(self):
