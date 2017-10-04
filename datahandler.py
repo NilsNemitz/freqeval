@@ -530,7 +530,6 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
     ########################################################################################
     def get_good_points(self, channel):
         """ get only points marked as good for all test_channels in list """
-#        col_list = [COL.TIME]
         if channel >= COL.CHANNELS:
             print('channel specification ',channel,' exceeds number of channel (',COL.CHANNELS,')')
             return None
@@ -612,7 +611,7 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
     ########################################################################################
     def evaluate_ch_data(self):
         """ evaluate filtered data """
-        new_adev_obj = ADevData(COL.CHANNELS) # make new object to store ADev data
+        #new_adev_obj = ADevData(COL.CHANNELS) # make new object to store ADev data
         reference_values = self._logic.channel_table.parameters['aref']
 
         for ch_index in range(COL.CHANNELS):
@@ -624,17 +623,10 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             meanval = np.mean(values)
             #print("mean of channel ",ch_index+1," is ",meanval)
             self._logic.channel_table.set_mean(ch_index, meanval)
-            adev = allantools.Dataset(
-                data=values, 
-                rate=self._logic.adev_table.time_step,
-                data_type='freq',
-                taus=self._logic.adev_table.tau_values
-                )
-            # TODO: set status here
-            print("computing ADev for channel ",ch_index)
-            adev.compute('oadev')
-            print('taus: ',adev.out['taus'])
-            self._logic.adev_table.add_channel_adev(ch_index, adev, reference_values[ch_index])
+            # prepare ADev data
+            adev = self.calculate_adev(values, reference_values[ch_index])
+            self._logic.adev_table.add_channel_adev(ch_index, adev)
+            # print('adev results for channel ', ch_index, '\n', adev)
 
     ########################################################################################
     def evaluate_eval_data(self):
@@ -734,13 +726,57 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
                 np.mean(times),
                 np.mean(values)
                 )
-
+            adev = self.calculate_adev(values, float(params['target']))
+            self._logic.adev_table.add_evaluation_adev(cnt, adev)
+        # end of evaluation enumeration
 
     ########################################################################################
-    def channels(self):
-        """ return number of channels in use """
-        return COL.CHANNELS
+    def calculate_adev(self, values, reference):                       
+        """ calculate Allan deviation and confidence intervals """
+        time_step = self._logic.adev_table.time_step 
+        rate = 1/time_step
+        tau_req = self._logic.adev_table.tau_values
+        (tau_act, devs, errs, ns) = allantools.oadev(values, rate=rate, data_type='freq', taus=tau_req)
+        devs_lower = np.zeros_like(devs)
+        devs_upper = np.zeros_like(devs)
+        for (index, tau) in enumerate(tau_act):
+            # sanity check tau values:
+            if abs(tau-tau_req[index]) > 0.0001:
+                print('Tau value differs from expectation: ', tau,' != ',tau_req[index])
+            dev = devs[index]
+            # Greenhall's EDF (Equivalent Degrees of Freedom)
+            edf = allantools.edf_greenhall(
+                alpha=0, # assuming WFM noise  (alpha +2,...,-4   noise type)
+                d=2,     # 1: first-difference variance, 2: allan variance, 3: hadamard variance
+                m=tau/time_step, # tau/tau0 averaging factor
+                N=len(values), # number of observations
+                overlapping=True, # sets stride to tau?
+                modified=False,
+                verbose=False
+                )
+            # To get CIs, for 1-sigma confidence we set
+            # ci = scipy.special.erf(1/math.sqrt(2)) = 0.68268949213708585
+            (lo, hi) = allantools.confidence_interval( 
+                dev=dev, ci=0.68268949213708585, edf=edf 
+                )
+            devs_lower[index] = dev-lo
+            devs_upper[index] = dev+hi
+        adev = { # assembly into dictionary
+            'taus':tau_act,
+            'devs':devs,
+            'devs_lower':devs_lower,
+            'devs_upper':devs_upper,
+            'frac_devs':devs/reference,
+            'frac_devs_lower':devs_lower/reference,
+            'frac_devs_upper':devs_upper/reference,
+            'log_taus':np.log10(tau_act),
+            'log_devs':np.log10(devs/reference),
+            'log_devs_lower':np.log10(devs_lower/reference),
+            'log_devs_upper':np.log10(devs_upper/reference),
+            'ref':reference
+            }
+        return adev
 
-
+########################################################################################
 if __name__ == '__main__':
     print("test")

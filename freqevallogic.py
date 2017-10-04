@@ -36,13 +36,14 @@ class SelectedPoints(object):
         self.point_b = None
         self.color_b = None
 
-class PlotInformation(object):
-    """ stores reference to individual plots and their min/max values """
-    def __init__(self, reference):
-        self.ref = reference
-        # These will hold range information dictionary later
-        self.good = None 
-        self.full = None
+# replaced by dictionary
+#class PlotInformation(object):
+#    """ stores reference to individual plots and their min/max values """
+#    def __init__(self, reference):
+#        self.ref = reference
+#        # These will hold range information dictionary later
+#        self.good = None 
+#        self.full = None
 
 class FreqEvalLogic(object):
     """program logic class for frequency evaluation program"""
@@ -146,75 +147,110 @@ class FreqEvalLogic(object):
         self._g3 = self.gui.graph3_layout
         self.selection_table.clear()
 
-        ### Initialize graph 1 ###
+        textwidth = 45
+        ### Initialize graph 1: channel time series data ###
         self._g1.setSpacing(0.)
         self._g1.setContentsMargins(0., 1., 0., 1.)
-
-        textwidth = 45
-
         self._ch_plots = []
-        plot = self._g1.addPlot(row=0, col=0, name="plotA1")
-        axis = plot.getAxis('bottom')
-        axis.setStyle(showValues=False)
-        self._ch_plots.append(PlotInformation(plot))
-
-        plot = self._g1.addPlot(row=1, col=0, name="plotA2")
-        plot.setXLink(self._ch_plots[0].ref)
-        self._ch_plots.append(PlotInformation(plot))
-
-        plot = self._g1.addPlot(row=2, col=0, name="plotA3")
-        plot.setXLink(self._ch_plots[0].ref)
-        plot.showAxis('top', True)
-        axis = plot.getAxis('bottom')
-        axis.setStyle(showValues=False)
-        axis = plot.getAxis('top')
-        axis.setStyle(showValues=False)
-        self._ch_plots.append(PlotInformation(plot))
-
-        plot = self._g1.addPlot(row=3, col=0, name="plotA4")
-        plot.setXLink(self._ch_plots[0].ref)
-        axis = plot.getAxis('bottom')
-        axis.setStyle(showValues=False)
-        self._ch_plots.append(PlotInformation(plot))
-
-        for plot in self._ch_plots:
-            axis = plot.ref.getAxis('left')
+        num_plots = self.channel_table.count
+        for index in range(num_plots):         
+            name = 'plotA{:1.0f}'.format(index+1)
+            plot = self._g1.addPlot(row=index, col=0, name=name)
+            axis = plot.getAxis('left')
             axis.setStyle(tickTextWidth=textwidth, autoExpandTextSpace=False)
-            plot.ref.setContentsMargins(0, 0, 2, 0)  # left, top, right, bottom
+            plot.setContentsMargins(0, 0, 2, 0)  # left, top, right, bottom
+            if index == 0:
+                first_plot = plot            
+            if index in (1, 2, 3):
+                # link x axis to first plot
+                plot.setXLink(first_plot)
+            if index in (0, 2, 3):
+                # no bottom axis labels
+                axis = plot.getAxis('bottom')
+                axis.setStyle(showValues=False)
+            if index == 2:
+                # turn on top axis
+                plot.showAxis('top', True)
+                axis = plot.getAxis('top')                
+                axis.setStyle(showValues=False)
+            plot_info = {"ref":plot}
+            self._ch_plots.append(plot_info)
 
         ### Initialize graph 2 - time series data for evaluation ###
         self._g2.setSpacing(0.)
         self._g2.setContentsMargins(0., 1., 0., 1.)
-
-        # TODO: set number of plots based on data
-        num_plots = 3
         self._eval_plots = []
-        for cnt in range(num_plots):
-            name = 'plotB{:1.0f}'.format(cnt+1)
-            plot = self._g2.addPlot(row=cnt, col=0, name=name)
+        num_plots = self.evaluation_table.count
+        for index in range(num_plots):
+            name = 'plotB{:1.0f}'.format(index+1)
+            plot = self._g2.addPlot(row=index, col=0, name=name)
             plot.setContentsMargins(0, 0, 2, 0)  # left, top, right, bottom
-            plot.setXLink(self._ch_plots[0].ref)
+            plot.setXLink(first_plot)
             axis = plot.getAxis('left')
             axis.setStyle(tickTextWidth=textwidth, autoExpandTextSpace=False)
-            if cnt < num_plots-1:
+            if index < num_plots-1:
                 plot.getAxis('bottom').setStyle(showValues=False)
-            self._eval_plots.append(PlotInformation(plot))
-
+            plot_info = {"ref":plot}
+            self._eval_plots.append(plot_info)
+            
         ### Initialize graph 3 - Allan deviations ###
         self._g3.setSpacing(0.)
-        self._g3.setContentsMargins(0., 1., 0., 1.)
-        num_plots = 2
+        self._g3.setContentsMargins(0., 1., 0, 1.)
         self._adev_plots = []
-        for cnt in range(num_plots):
-            name = 'plotC{:1.0f}'.format(cnt+1)
-            plot = self._g3.addPlot(row=cnt, col=0, name=name)
-            plot.setContentsMargins(0, 0, 2, 0)  # left, top, right, bottom
+        num_plots = 2
+        # define ticks
+        major = []
+        minor = []
+        for exp in range(-22,-8):
+            value = 1*10**exp
+            major.append((np.log10(value), '{:5.0E}'.format(value)))
+            for factor in range(2,10,2):
+                value = factor*10**exp
+                minor.append((np.log10(value), '{:5.0E}'.format(value)))
+        y_ticks = [ major, minor ]
+        major = []
+        minor = []
+        for exp in range(-1,8):
+            value = 1*10**exp
+            if value < 1:
+                major.append((np.log10(value), '{:0,.1f}'.format(value)))
+            elif value < 1000000:
+                major.append((np.log10(value), '{:0,.0f}'.format(value)))
+            else:
+                major.append((np.log10(value), '{:0,.0E}'.format(value)))
+            for factor in range(2,10,2):
+                value = factor*10**exp
+                if value < 1:
+                    minor.append((np.log10(value), '{:0,.1f}'.format(value)))
+                elif value < 1000000:
+                   minor.append((np.log10(value), '{:0,.0f}'.format(value)))
+                else:
+                    minor.append((np.log10(value), '{:0,.0E}'.format(value)))
+        x_ticks = [ major, minor ]
+        for index in range(num_plots):
+            name = 'plotC{:1.0f}'.format(index+1)
+            plot = self._g3.addPlot(row=index, col=0, name=name)
+            plot.setLabel('left', text="fractional Allan deviation", units=None, unitPrefix=None)
+            plot.setLabel('bottom', text="averaging interval τ  (s)", units=None, unitPrefix=None)
+            plot.setContentsMargins(0, 2, 2, 0)  # left, top, right, bottom
+            plot.showGrid(x=True, y=True)
+            plot.showAxis('right', True)
+            axis = plot.getAxis('right')
+            axis.setTicks(y_ticks)
+            axis.setStyle(showValues=False)
             axis = plot.getAxis('left')
+            axis.setTicks(y_ticks)
             axis.setStyle(tickTextWidth=textwidth, autoExpandTextSpace=False)
+            plot.showAxis('top', True)
+            axis = plot.getAxis('top')
+            axis.setTicks(x_ticks)            
+            axis.setStyle(showValues=False)
             axis = plot.getAxis('bottom')
-            axis.setStyle(tickTextWidth=textwidth, autoExpandTextSpace=False)
-            self._adev_plots.append(PlotInformation(plot))
-
+            axis.setTicks(x_ticks)
+            axis = plot.getAxis('top')
+            axis.setStyle(showValues=False)
+            plot_info = {"ref":plot}
+            self._adev_plots.append(plot_info)
 
     ###############################################################################################
     def _clicked_point(self, plot, points):
@@ -254,8 +290,8 @@ class FreqEvalLogic(object):
             # print('plotting channel ', ch_index+1, ' data.')
             # get good data for channel
             good, range_info = self._data_obj.get_good_points(ch_index)
-            self._ch_plots[ch_index].good = range_info
-            self._ch_plots[ch_index].all = self._data_obj.ranges[ch_index]
+            self._ch_plots[ch_index]['good'] = range_info
+            self._ch_plots[ch_index]['all'] = self._data_obj.ranges[ch_index]
                 #print('number of good points:', good.shape)
             mskd = self._data_obj.get_mskd_points(ch_index)
                 #print('selection for masked points:' ,mskd)
@@ -278,7 +314,7 @@ class FreqEvalLogic(object):
                 "CH "+str(ch_index+1)+"1 (Hz)<br>-"
                 +str(baselines[ch_index]/1000000)+" MHz<br>"
                 )
-            plot = self._ch_plots[ch_index].ref
+            plot = self._ch_plots[ch_index]['ref']
             plot.clear()
             plot.addItem(sc_rej)
             plot.addItem(sc_good)
@@ -296,7 +332,7 @@ class FreqEvalLogic(object):
             # print('plotting data for evaluation #', eval_index+1, '.')
             # get good data for channel
             points = self._data_obj.get_evaluation_points(eval_index)
-            plot = self._eval_plots[eval_index].ref
+            plot = self._eval_plots[eval_index]['ref']
             color = self.evaluation_table.parameters[eval_index]['color']
             name = self.evaluation_table.parameters[eval_index]['name']
             # print('evaluation color: ', color)
@@ -324,15 +360,15 @@ class FreqEvalLogic(object):
         t_max = -1E15
         for plot in self._ch_plots:
             # set vertical axis for each channel:
-            if plot.good:
-                plot.ref.setYRange(plot.good['y_min'], plot.good['y_max'], padding=0.01)
+            if plot['good']:
+                plot['ref'].setYRange(plot['good']['y_min'], plot['good']['y_max'], padding=0.01)
             # find combined maxima for all time axes:
-            if plot.good and plot.good['t_min'] < t_min:
-                t_min = plot.good['t_min']
-            if plot.good and plot.good['t_max'] > t_max:
-                t_max = plot.good['t_max']
+            if plot['good'] and plot['good']['t_min'] < t_min:
+                t_min = plot['good']['t_min']
+            if plot['good'] and plot['good']['t_max'] > t_max:
+                t_max = plot['good']['t_max']
         # time axes are linked to plot 0:
-        self._ch_plots[0].ref.setXRange(t_min, t_max, padding=0.01)
+        self._ch_plots[0]['ref'].setXRange(t_min, t_max, padding=0.01)
         self.gui.set_status('ok')
 
     ###############################################################################################
@@ -344,21 +380,36 @@ class FreqEvalLogic(object):
         t_max = -1E15
         for plot in self._ch_plots:
             # set vertical axis for each channel:
-            plot.ref.setYRange(plot.all['y_min'], plot.all['y_max'], padding=0.01)
+            plot['ref'].setYRange(plot['all']['y_min'], plot['all']['y_max'], padding=0.01)
             # find combined maxima for all time axes:
-            if plot.all['t_min'] < t_min:
-                t_min = plot.all['t_min']
-            if plot.all['t_max'] > t_max:
-                t_max = plot.all['t_max']
+            if plot['all']['t_min'] < t_min:
+                t_min = plot['all']['t_min']
+            if plot['all']['t_max'] > t_max:
+                t_max = plot['all']['t_max']
         # time axes are linked to plot 0:
-        self._ch_plots[0].ref.setXRange(t_min, t_max, padding=0.01)
+        self._ch_plots[0]['ref'].setXRange(t_min, t_max, padding=0.01)
         self.gui.set_status('ok')
 
     ###############################################################################################
-    def plot_channel_adev(self, adev_obj):
+    def plot_channel_adev(self):
         """ draw ADev graph for individual channel data """
-        # FIXME: disabled!
+        plot = self._adev_plots[0]['ref']
+        plot.clear()
+        for index in range(self.channel_table.count):
+            adev = self.adev_table.channel_adev[index]
+            color = self.channel_table.parameters[index]['color']
+            scatter = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None))
+            scatter.addPoints(
+                x=adev['log_taus'],
+                y=adev['log_devs'],
+                brush=color
+                )
+            plot.addItem(scatter)
+        #for error_bar_plot in er_b1:
+        #    plot.addItem(error_bar_plot)
         return None
+
+
         scB1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None))
         er_b1 = []
         for index in range(self._data_obj.channels()):
@@ -385,13 +436,6 @@ class FreqEvalLogic(object):
         #erB1d = pg.ErrorBarItem(size=3, pen=Gr.RED)
         #erB1d.setData(x=log_tau, y=log_dev, top=log_top, bottom=log_bot)
 
-        plot = self._eval_plots[0].ref
-        plot.clear()
-        plot.addItem(scB1)
-        for error_bar_plot in er_b1:
-            plot.addItem(error_bar_plot)
-        plot.setLabel('left', text="fractional ADev", units=None, unitPrefix=None)
-        plot.setLabel('bottom', text="time (s)", units=None, unitPrefix=None)
 
 
     ###############################################################################################
@@ -443,7 +487,7 @@ class FreqEvalLogic(object):
         self.gui.set_status("plotting data")
         self.plot_time_series()
         self.gui.set_status("plotting Allan deviations")
-        self.plot_channel_adev(self._data_obj.ch_adev)
+        self.plot_channel_adev()
         self.gui.set_status("plotting evaluation data")
         self.plot_eval_time_series()
         self.gui.set_status("ok")
