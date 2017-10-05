@@ -64,59 +64,8 @@ class FreqEvalLogic(object):
             'threshold':10 # x-sigma threshold for outlier detection
         }
         self.config = configparser.ConfigParser()
-
-#        self.eval_config['CONFIG'] = {
-#            'channels':str(self.num_channels),
-#            'outlier_threshold':str(self.threshold),
-#            'evaluations':str(self.num_evaluations),
-#            'ceo_channel':str(self.channel_ceo),
-#            'rep_channel':str(self.channel_rep),
-#            'rep_line_index':str(self.channel_rep)
-#        }
-#        for index in range(self.num_channels):
-#            section = 'CHANNEL{:d}'.format(index+1)
-#            #print("section name: "+section)
-#            if not section in self.eval_config:
-#                self.eval_config[section] = {}
-#            string = 'ch {:d}'.format(index+1)
-#            self.eval_config[section]['name'] = string
-#            self.eval_config[section]['color'] = self.channel_color_list[index].name()
-#            self.eval_config[section]['baseline'] = '0'
-#            self.eval_config[section]['tolerance'] = '1000'
-#            self.eval_config[section]['filter'] = 'yes'
-#            self.eval_config[section]['correction'] = '0'
-#            self.eval_config[section]['adev_reference'] = '1'
-
-#        for index in range(self.num_evaluations):
-#            section = 'EVALUATION{:d}'.format(index+1)
-#            if not section in self.eval_config:
-#                self.eval_config[section] = {}
-#            string = 'eval {:d}'.format(index+1)
-#            self.eval_config[section]['name'] = string
-#            index_w_offset = index+self.num_channels
-#            self.eval_config[section]['color'] = self.channel_color_list[index_w_offset].name()
-#            self.eval_config[section]['show'] = 'yes'
-#            self.eval_config[section]['type'] = 'absolute'
-#            self.eval_config[section]['multiplier'] = '1'
-#            self.eval_config[section]['main_comb_line'] = '1234567'
-#            self.eval_config[section]['main_beat_channel'] = '3'
-#            self.eval_config[section]['main_reference'] = '123123123123123.1234'
-#            self.eval_config[section]['main_sys_cor'] = '0.200'
-#            self.eval_config[section]['main_sys_unc'] = '0.100'
-#            self.eval_config[section]['ref_comb_line'] = '0'
-#            self.eval_config[section]['ref_beat_channel'] = '0'
-#            self.eval_config[section]['ref_reference'] = '123123123123123.1234'
-#            self.eval_config[section]['ref_sys_cor'] = '0.400'
-#            self.eval_config[section]['ref_sys_unc'] = '0.300'
-
         print("reading default config file")
         self.config.read('default.cfg')
-
-#        self.channel_ceo = self.eval_config['CONFIG'].getint('ceo_channel', 1)
-#        self.channel_rep = self.eval_config['CONFIG'].getint('rep_channel', 1)
-#        self.outlier_threshold = self.eval_config['CONFIG'].getfloat('outlier_threshold', 2)
-
- #       print("CEO / rep channels: ", self.channel_ceo, " / ", self.channel_rep)
 
         # logic class tracks table models and makes them available as needed
         self.selection_table = SelectionTableModel(None, self)
@@ -311,7 +260,7 @@ class FreqEvalLogic(object):
             sc_good.sigClicked.connect(self._clicked_point)
 
             labelstring = (
-                "CH "+str(ch_index+1)+"1 (Hz)<br>-"
+                "CH "+str(ch_index+1)+" (Hz)<br>-"
                 +str(baselines[ch_index]/1000000)+" MHz<br>"
                 )
             plot = self._ch_plots[ch_index]['ref']
@@ -360,13 +309,17 @@ class FreqEvalLogic(object):
         t_max = -1E15
         for plot in self._ch_plots:
             # set vertical axis for each channel:
-            if plot['good']:
-                plot['ref'].setYRange(plot['good']['y_min'], plot['good']['y_max'], padding=0.01)
-            # find combined maxima for all time axes:
-            if plot['good'] and plot['good']['t_min'] < t_min:
-                t_min = plot['good']['t_min']
-            if plot['good'] and plot['good']['t_max'] > t_max:
-                t_max = plot['good']['t_max']
+            try:
+                if plot['good']:
+                    plot['ref'].setYRange(plot['good']['y_min'], plot['good']['y_max'], padding=0.01)
+                # find combined maxima for all time axes:
+                if plot['good'] and plot['good']['t_min'] < t_min:
+                    t_min = plot['good']['t_min']
+                if plot['good'] and plot['good']['t_max'] > t_max:
+                    t_max = plot['good']['t_max']
+            except KeyError as error:
+                print('[zoom_all] key not found. Missing data?')
+
         # time axes are linked to plot 0:
         self._ch_plots[0]['ref'].setXRange(t_min, t_max, padding=0.01)
         self.gui.set_status('ok')
@@ -380,64 +333,73 @@ class FreqEvalLogic(object):
         t_max = -1E15
         for plot in self._ch_plots:
             # set vertical axis for each channel:
-            plot['ref'].setYRange(plot['all']['y_min'], plot['all']['y_max'], padding=0.01)
-            # find combined maxima for all time axes:
-            if plot['all']['t_min'] < t_min:
-                t_min = plot['all']['t_min']
-            if plot['all']['t_max'] > t_max:
-                t_max = plot['all']['t_max']
+            try:
+                plot['ref'].setYRange(plot['all']['y_min'], plot['all']['y_max'], padding=0.01)
+                # find combined maxima for all time axes:
+                if plot['all']['t_min'] < t_min:
+                    t_min = plot['all']['t_min']
+                if plot['all']['t_max'] > t_max:
+                    t_max = plot['all']['t_max']
+            except KeyError as error:
+                print('[zoom_all] key not found. Missing data?')
         # time axes are linked to plot 0:
         self._ch_plots[0]['ref'].setXRange(t_min, t_max, padding=0.01)
         self.gui.set_status('ok')
 
     ###############################################################################################
-    def plot_channel_adev(self):
+    def plot_adev(self, typestr):
         """ draw ADev graph for individual channel data """
-        plot = self._adev_plots[0]['ref']
+        lower_typestring = typestr.lower()
+        do_channel = False
+        do_evaluation = False
+        if lower_typestring == 'channel':
+            plot = self._adev_plots[0]['ref']
+            count = self.channel_table.count
+            do_channel = True
+        elif lower_typestring == 'evaluation':
+            plot = self._adev_plots[1]['ref']
+            count = self.evaluation_table.count
+            do_evaluation = True
+        else:
+            print('[plot_adev] Reqested undefined plot for ', typestr)
+            return
         plot.clear()
-        for index in range(self.channel_table.count):
-            adev = self.adev_table.channel_adev[index]
-            color = self.channel_table.parameters[index]['color']
+        for index in range(count):
+            if do_channel:
+                adev = self.adev_table.channel_adev[index]
+                color = self.channel_table.parameters[index]['color']
+            elif do_evaluation:
+                adev = self.adev_table.evaluation_adev[index]
+                color = self.evaluation_table.parameters[index]['color']
+            else:
+                print('[plot_adev] Reqested undefined plot for ', typestr)
+                return
+            if not adev:
+                print('[plot_adev] Missing ADev data for index ', index)
+                return
             scatter = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None))
             scatter.addPoints(
                 x=adev['log_taus'],
                 y=adev['log_devs'],
                 brush=color
                 )
+            bar = pg.ErrorBarItem(size=3, pen=color, beam=0.04)
+            bar.setData(
+                x=adev['log_taus'],
+                y=adev['log_devs'],
+                top=adev['log_bar_up'],
+                bottom=adev['log_bar_down']
+                )
+            times = np.log10([1, adev['time_span']])
+            ref = adev['ref']
+            vals = np.log10([adev['dev_1s']/ref, adev['dev_ext']/ref])
+            line = pg.PlotCurveItem(
+                pen=color, x=times, y=vals
+            )
+            plot.addItem(line)
+            plot.addItem(bar)
             plot.addItem(scatter)
-        #for error_bar_plot in er_b1:
-        #    plot.addItem(error_bar_plot)
-        return None
-
-
-        scB1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None))
-        er_b1 = []
-        for index in range(self._data_obj.channels()):
-            color = self.channel_color_list[index]
-            (log_tau, log_dev, log_top, log_bot) = adev_obj.log_values(index)
-            scB1.addPoints(x=log_tau, y=log_dev, brush=color)
-            error_bar_plot = pg.ErrorBarItem(size=3, pen=Gr.SEA)
-            error_bar_plot.setData(x=log_tau, y=log_dev, top=log_top, bottom=log_bot)
-            er_b1.append(error_bar_plot)
-
-        #(log_tau, log_dev, log_top, log_bot) = adev_obj.log_values(1)
-        #scB1.addPoints( x=log_tau, y=log_dev, brush = Gr.PURPLE)
-        #erB1b = pg.ErrorBarItem(size=3, pen=Gr.PURPLE)
-        #erB1b.setData(x=log_tau, y=log_dev, top=log_top, bottom=log_bot)
-
-        #(log_tau, log_dev, log_top, log_bot) = adev_obj.log_values(2)
-        #print("dev", log_dev)
-        #scB1.addPoints( x=log_tau, y=log_dev, brush = Gr.MAGENTA)
-        #erB1c = pg.ErrorBarItem(size=3, pen=Gr.MAGENTA)
-        #erB1c.setData(x=log_tau, y=log_dev, top=log_top, bottom=log_bot)
-
-        #(log_tau, log_dev, log_top, log_bot) = adev_obj.log_values(3)
-        #scB1.addPoints( x=log_tau, y=log_dev, brush = Gr.RED)
-        #erB1d = pg.ErrorBarItem(size=3, pen=Gr.RED)
-        #erB1d.setData(x=log_tau, y=log_dev, top=log_top, bottom=log_bot)
-
-
-
+        
     ###############################################################################################
     def open_data_file(self, filename):
         """ load data from file, trigger eval and redraw """
@@ -477,19 +439,24 @@ class FreqEvalLogic(object):
             self.parameters['overhangs'],
             self.parameters['threshold'],
             )
+        self.gui.set_status('Evaluating channel data')
         self._data_obj.evaluate_ch_data()
+        self.gui.set_status('Evaluating measurements')
         self._data_obj.evaluate_eval_data()
+        self.gui.set_status('Collecting results')
         self.evaluation_table.update() # has new data from evaluation call
 
+        self.gui.set_status('Updating tables')
         self.channel_table.update_view()
-        # evaluate data
         self.evaluation_table.update_view()
-        self.gui.set_status("plotting data")
+        self.gui.set_status('Plotting data')
         self.plot_time_series()
-        self.gui.set_status("plotting Allan deviations")
-        self.plot_channel_adev()
-        self.gui.set_status("plotting evaluation data")
+        self.gui.set_status('Plotting channel Allan deviations')
+        self.plot_adev('channel')
+        self.gui.set_status('Plotting evaluation data')
         self.plot_eval_time_series()
+        self.gui.set_status('Plotting evaluation Allan deviations')
+        self.plot_adev('evaluation')
         self.gui.set_status("ok")
 
     ###############################################################################################

@@ -36,6 +36,7 @@ class ADevTableModel(QtCore.QAbstractTableModel):
         self.tau_targets = [1E0, 1E1, 1E2, 1E3, 1E4, 1E5, 1E6, 1E7, 1E8, 1E9]
         self.tau_values = self.tau_targets
         self.tau_index_dict = {}
+        self.key_tau_index = 0
 
     def generate_taus(self, time_step):
         """ generate list of tau values for given time step """
@@ -43,6 +44,7 @@ class ADevTableModel(QtCore.QAbstractTableModel):
         self.time_step = time_step
         del time_step
         TAUS_PER_DECADE = 10
+        KEY_TAU_SELECTION = 2 # use third entry in tau targets as key value for extrapolation
         scale = 10**(1/TAUS_PER_DECADE)
         # these will be reverse indexed and also set the range:
 
@@ -58,7 +60,7 @@ class ADevTableModel(QtCore.QAbstractTableModel):
                 last_tau = rounded_tau
                 real_tau *= scale
                 rounded_tau = self.time_step * round(real_tau/self.time_step)
-                print('real tau = ', real_tau, ' --> ', rounded_tau)
+                # print('real tau = ', real_tau, ' --> ', rounded_tau)
                 if rounded_tau > self.tau_values[-1]:
                     # do not add redunant values to the tau list
                     self.tau_values.append(rounded_tau)
@@ -71,8 +73,16 @@ class ADevTableModel(QtCore.QAbstractTableModel):
             else:
                 self.tau_index_dict[key] = len(self.tau_values) - 2 - 1 # 2nd-to-last element
         self.tau_values = self.tau_values[1:-1] # drop first dummy element
-        print('list of taus: ', self.tau_values)
-        print('dictionary of indices of major tau values: ', self.tau_index_dict)
+        #print('list of taus: ', self.tau_values)
+        #print('dictionary of indices of major tau values: ', self.tau_index_dict)
+        if KEY_TAU_SELECTION < len(self.tau_index_dict):
+            self.key_tau_index = self.tau_index_dict[self.tau_targets[KEY_TAU_SELECTION]]
+        else:
+            self.key_tau_index = self.tau_values[-1] # use last possible
+        print(
+            'index to key tau value: ', self.key_tau_index,
+            ': tau = ',self.tau_values[self.key_tau_index], ' s'
+            )
 
     #######################################################################
     def add_channel_adev(self, index, adev):
@@ -167,7 +177,7 @@ class ADevTableModel(QtCore.QAbstractTableModel):
             elif role == QtC.BackgroundColorRole:
                 if ch_col is not None:
                     return self._logic.channel_table.parameters[ch_col]['color']
-                elif eval_col  is not None:
+                elif eval_col is not None:
                     return self._logic.evaluation_table.parameters[eval_col]['color']
                 else:
                     return QtGui.QColor(214, 73, 183)
@@ -203,10 +213,10 @@ class ADevTableModel(QtCore.QAbstractTableModel):
                         return '---'
                 ##### Display: time span #####
                 elif row == self.ROW_NUMBER-2:
-                    return '{:0,.0}'.format(adev['time_span'])
+                    return '{:8,.0f}'.format(adev['time_span'])
                 ##### Display: predicted uncertainty #####
                 elif row == self.ROW_NUMBER-1:
-                    return '{:5.2E}'.format(adev['extrapolated'])                
+                    return '{:5.2E}'.format(adev['dev_ext']/adev['ref'])                
                 ##### Display: we have no idea what to put on this row #####
                 else:
                     return 'row error'
@@ -216,20 +226,17 @@ class ADevTableModel(QtCore.QAbstractTableModel):
 
             #string = "{0:{1}>5,.1f}".format(self.data[row]['band']," ")
             # pad with digit-sized space
-        if role == QtC.TextAlignmentRole:
+        elif role == QtC.TextAlignmentRole:
             return QtC.AlignCenter
 
-#            if( col == 0):
-#                return QtC.AlignCenter
-#            elif( col == 1): # baseline value
-#                return QtC.AlignRight
-#            elif( col == 2): # filter / allowed band
-#                return QtC.AlignLeft
-#            elif( col == 3): # offset
-#                return QtC.AlignRight
-#            elif( col == 4): # ADev reference
-#                return QtC.AlignRight
-#            elif( col == 5): # mean
-#                return QtC.AlignRight
-
+        elif role == QtC.BackgroundColorRole:
+            try:
+                key = int(self.tau_targets[row-1])
+                tau_index = self.tau_index_dict[key]
+                # print('checking: ', tau_index, ' // ', self.key_tau_index)
+                if tau_index == self.key_tau_index:                    
+                    return self._logic.BLACK
+            except (KeyError, IndexError) as error:
+                pass
+            return None
         return None

@@ -119,20 +119,30 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
                 )
             new_dict['mean_relative'] = dec.Decimal('NaN')
             new_dict['mean_time'] = dec.Decimal('NaN')
-            new_dict['stat_unc'] = dec.Decimal('NaN')
+            new_dict['start_time'] = dec.Decimal('NaN')
+            new_dict['stop_time'] = dec.Decimal('NaN')
+            
+            new_dict['stat_unc_1s'] = dec.Decimal('NaN')
+            new_dict['stat_unc_ext'] = dec.Decimal('NaN')
+            new_dict['time_span'] = dec.Decimal('NaN')
             self.parameters.append(new_dict)
         ### done initializing parameter dictionary ###############################
 
     #######################################################################
-    def set_means(self, index, mean_time, mean_value):
+    def set_means(self, index, mean_time, start_time, stop_time, mean_value):
         """ called by data handler to set mean time and evaluation value """
         self.parameters[index]['mean_time'] = dec.Decimal(mean_time)
+        self.parameters[index]['start_time'] = dec.Decimal(start_time)
+        self.parameters[index]['stop_time'] = dec.Decimal(stop_time)
         self.parameters[index]['mean_relative'] = dec.Decimal(mean_value)
-#        print(
-#            'mean values ',self.parameters[index]['mean_relative'],
-#            ' @ ',self.parameters[index]['mean_time']
-#            )
 
+    #######################################################################
+    def set_statistics(self, index, dev_1s, dev_ext, time_span):
+        """ called by data handler to set mean time and evaluation value """
+        self.parameters[index]['stat_unc_1s'] = dec.Decimal(dev_1s)
+        self.parameters[index]['stat_unc_ext'] = dec.Decimal(dev_ext)
+        self.parameters[index]['time_span'] = dec.Decimal(time_span)
+        
     #######################################################################
     def update(self):
         """ update calculation results for values now in parameters """
@@ -167,7 +177,7 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             del corr_ceo, corr_rep, corr_beat
             
             relative = par['mean_relative'] # extracted from time series data
-            stat_unc = par['stat_unc'] # extracted from Allan deviation
+            stat_unc = par['stat_unc_ext'] # extracted from Allan deviation
             n_a = par['n_a']
             n_b = par['n_b']
             n_rep = par['n_rep']
@@ -207,10 +217,11 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             deviation = result - target
             frac_dev = deviation / result
 
-            tot_var = sys_unc**2 + stat_unc**2
-            frac_unc = tot_var.sqrt() / result
+            combined_var = sys_unc**2 + stat_unc**2
+            combined_unc = combined_var.sqrt()
+
             frac_dev = deviation / result
-            frac_unc = stat_unc / result
+            frac_unc = combined_unc / result
             #print(
             #    'f_ceo: ', repr(base_ceo),
             #    '   f_rep: ', repr(base_rep),
@@ -238,16 +249,17 @@ class EvaluationTableModel(QtCore.QAbstractTableModel): # pylint: disable=locall
             par['r_ab'] = r_ab
             par['baseline'] = result_baseline
             par['result'] = result
-            par['uncert'] = stat_unc
             par['sys_cor'] = sys_cor
             par['sys_unc'] = sys_unc
+            par['uncert'] = combined_unc
             par['target'] = target
             par['deviation'] = deviation
             par['frac_dev'] = frac_dev
-            par['frac_unc'] = frac_unc
+            par['frac_unc'] = combined_unc/result
         self.update_view()
 
-
+    #######################################################################
+    # table data interface used by QTableView
     #######################################################################
     def columnCount(self, parent): # pylint: disable=locally-disabled, invalid-name
         """ TableView: return number of columns """

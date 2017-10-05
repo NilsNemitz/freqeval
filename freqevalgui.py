@@ -82,9 +82,11 @@ class FreqEvalMain(QMainWindow):
         del qval
         print("forced redraw")
         self._channel_table.update()
-        self._graph_widget.update()
+        self._evaluation_table_view.update()
+        self._adev_table_view.update()
+        self._main_widget.update()
         #self._channel_table_view.refresh()
-        self._graph_widget.refresh()
+        #self._graph_widget.refresh()
         self._main_widget.refresh()
 
     ###############################################################################
@@ -142,9 +144,9 @@ class FreqEvalMain(QMainWindow):
         savemask_act.setStatusTip('Save mask information for current data set')
         savemask_act.triggered.connect(self._logic.save_maskfile_passthru)
 
-        report_act = QAction('Save &report', self)
-        report_act.setShortcut('Ctrl+R')
-        report_act.setStatusTip('Save report and config for current data file')
+        report_act = QAction('&Generate report', self)
+        report_act.setShortcut('Ctrl+G')
+        report_act.setStatusTip('Generate report and save config for current data file')
         report_act.triggered.connect(self._logic.save_report_passthru)
 
         save_config_act = QAction('Save &default config', self)
@@ -191,17 +193,17 @@ class FreqEvalMain(QMainWindow):
         view1_act = QAction('View &1: Channels', self)
         view1_act.setShortcut('Ctrl+1')
         view1_act.setStatusTip('Arrange graphs for inspection of single channel data')
-        view1_act.triggered.connect(self.show_msg_not_implemented)
+        view1_act.triggered.connect(self.arrange_channels)
 
         view2_act = QAction('View &2: Evaluation', self)
         view2_act.setShortcut('Ctrl+2')
         view2_act.setStatusTip('Arrange graphs for inspection of evaluation data')
-        view2_act.triggered.connect(self.show_msg_not_implemented)
+        view2_act.triggered.connect(self.arrange_evaluations)
 
         view3_act = QAction('View &3: Results', self)
         view3_act.setShortcut('Ctrl+3')
         view3_act.setStatusTip('Arrange graphs to give an overview of results')
-        view3_act.triggered.connect(self.show_msg_not_implemented)
+        view3_act.triggered.connect(self.arrange_results)
 
         redraw_act = QAction('&Redraw', self)
         redraw_act.setShortcut('Ctrl+R')
@@ -215,9 +217,6 @@ class FreqEvalMain(QMainWindow):
         mask_menu.addAction(view2_act)
         mask_menu.addAction(view3_act)        
         mask_menu.addAction(redraw_act)
-
-        #self.settings.setValue('windowposition', self.pos())
-        #self.settings.setValue('windowsize', self.size())
 
         self.file_info_label = QLabel('filename/filename/filename.fil : MJD 12345')
         self.statusBar().addPermanentWidget(self.file_info_label)
@@ -281,16 +280,14 @@ class FreqEvalMain(QMainWindow):
         view_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         view_button1 = QPushButton('1: channels')
-
-        self.show_msg_not_implemented
         view_button1.setStyleSheet("text-align: left;")
-        view_button1.clicked.connect(self.show_msg_not_implemented)
+        view_button1.clicked.connect(self.arrange_channels)
         view_button2 = QPushButton('2: evaluation')
         view_button2.setStyleSheet("text-align: left;")
-        view_button2.clicked.connect(self.show_msg_not_implemented)
+        view_button2.clicked.connect(self.arrange_evaluations)
         view_button3 = QPushButton('3: results')
         view_button3.setStyleSheet("text-align: left;")
-        view_button3.clicked.connect(self.show_msg_not_implemented)
+        view_button3.clicked.connect(self.arrange_results)
         spacer = QLabel('')
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
@@ -316,7 +313,7 @@ class FreqEvalMain(QMainWindow):
 
         channel_table_title_label = QLabel("Channel settings")
         channel_table_title_label.setStyleSheet("font-weight: bold;")
-        ch_adev_table_title_label = QLabel("Allan Deviation results")
+        ch_adev_table_title_label = QLabel("Instabilities (overlapping Allan deviation)")
         ch_adev_table_title_label.setStyleSheet("font-weight: bold;")
         evaluation_table_title_label = QLabel("Evaluation settings and results")
         evaluation_table_title_label.setStyleSheet("font-weight: bold;")
@@ -405,21 +402,6 @@ class FreqEvalMain(QMainWindow):
         scroll_area.setMinimumWidth(width1 + width2)
         # extend width so that vertical bar does not overlap
 
-        #self.mini_log_text = QPlainTextEdit()
-        #self.mini_log_text.setReadOnly(True)
-        #self.mini_log_text.setMaximumBlockCount(4)
-        #metrics = self.mini_log_text.fontMetrics()
-        #self.mini_log_text.setFixedHeight(4*metrics.height()+11) #fudge margins
-        #self.mini_log_text.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        #self.mini_log_text.setStyleSheet('font: 8pt "Consolas";')
-        #self.mini_log_text.setWordWrapMode(QTextOption.NoWrap)
-        #self.disp_radio_freq = QRadioButton("frequencies")
-        #self.disp_radio_freq.page = 0 # --> corresponds to setting page 0
-        #self.disp_radio_freq.toggled.connect(self.disp_radio_toggled)
-        #self.disp_radio_raw = QRadioButton("raw readout")
-        #self.disp_radio_raw.page = 1 # --> corresponds to setting page 1
-        #self.disp_radio_raw.toggled.connect(self.disp_radio_toggled)
-
         #########################################################################
         # overall layout:
         self._time_graph_widget = QSplitter(Qt.Vertical)
@@ -437,15 +419,6 @@ class FreqEvalMain(QMainWindow):
         self._main_widget.setStretchFactor(2, 0)
         self.setCentralWidget(self._main_widget)
 
-        sizes = self._main_widget.sizes()
-        available = sizes[0] + sizes[1]
-        new0 = int(0.7 * available)
-        new1 = int(0.3 * available)
-        new2 = sizes[2]
-        print('sizes: ',new0, new0, new2)
-        #self._main_widget.setSizes([new0, new1, new2])
-
-
     def init_state(self):
         """ initialize remaining settings after logic has started """
 
@@ -462,6 +435,56 @@ class FreqEvalMain(QMainWindow):
         """set file information text in status bar"""
         self.file_info_label.setText(text)
 
+    ###############################################################################################
+    def arrange_channels(self, qval):
+        """ quick-arrange splitters to suitable settings for channal data """
+        del qval
+        print('[arrange_channels] Arranging windows for channel mode')
+        sizes = self._time_graph_widget.sizes()
+        graph_height = sizes[0] + sizes[1]
+        sizes[0] = graph_height
+        sizes[1] = 0
+        self._time_graph_widget.setSizes(sizes)
+        sizes = self._main_widget.sizes()
+        graph_width = sizes[0] + sizes[1]
+        sizes[0] = graph_width
+        sizes[1] = 0
+        self._main_widget.setSizes(sizes)
+        self._logic.zoom_all(None)
+
+    ###############################################################################################
+    def arrange_evaluations(self, qval):
+        """ quick-arrange splitters to suitable settings for evaluations """
+        del qval
+        sizes = self._time_graph_widget.sizes()
+        graph_height = sizes[0] + sizes[1]
+        sizes[0] = int(0.3 * graph_height)
+        sizes[1] = graph_height - sizes[0]
+        self._time_graph_widget.setSizes(sizes)
+        sizes = self._main_widget.sizes()
+        graph_width = sizes[0] + sizes[1]
+        sizes[0] = int(0.8 * graph_width)
+        sizes[1] = graph_width - sizes[0]
+        self._main_widget.setSizes(sizes)
+        self._logic.zoom_good(None)
+
+    ###############################################################################################
+    def arrange_results(self, qval):
+        """ quick-arrange splitters to suitable settings for overview of results """
+        del qval
+        sizes = self._time_graph_widget.sizes()
+        graph_height = sizes[0] + sizes[1]
+        sizes[0] = int(0.45 * graph_height)
+        sizes[1] = graph_height - sizes[0]
+        self._time_graph_widget.setSizes(sizes)
+        sizes = self._main_widget.sizes()
+        graph_width = sizes[0] + sizes[1]
+        sizes[0] = int(0.6 * graph_width)
+        sizes[1] = graph_width - sizes[0]
+        self._main_widget.setSizes(sizes)
+        self._logic.zoom_good(None)
+
+    ###############################################################################################
     def closeEvent(self, event): # pylint: disable=locally-disabled, invalid-name
         """callback on window close"""
         quit_msg = "Are you sure you want to exit the program?"

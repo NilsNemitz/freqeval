@@ -14,7 +14,7 @@ import pandas
 import numpy as np
 import allantools
 
-from freqevalinternal import ADevData
+#from freqevalinternal import ADevData
 
 class COL(object):
     """ constants for readable addressing of data columns """
@@ -517,13 +517,14 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
 #        col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
         #print('repr of raw data: ', repr(self._data))
         if channel_mask in self._cache:
-            print('using cached copy for bitmask {:8b}'.format(channel_mask))            
+            pass
+            # print('using cached copy for bitmask {:8b}'.format(channel_mask))            
         else:
             col_data = self._data[:, col_list]
             #print('repr of col data: ', repr(col_data))
             pick_list = self._data[:, COL.FLAG] & channel_mask == 0
             self._cache[channel_mask] = col_data[pick_list]
-            print('cached data for bitmask {:8b}'.format(channel_mask))
+            # print('cached data for bitmask {:8b}'.format(channel_mask))
         #print('repr of sel data: ', repr(data))
         return self._cache[channel_mask]
             
@@ -536,12 +537,13 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         channel_mask = (1 << channel) # look only at gathered flag
         #col_list.append(COL.CH1+channel)
         if channel_mask in self._cache:
-            print('using cached copy for bitmask {:8b}'.format(channel_mask))
+            pass
+            # print('using cached copy for bitmask {:8b}'.format(channel_mask))
         else:
             col_data = self._data[:, (COL.TIME, COL.CH1+channel)]
             pick_list = self._data[:, COL.FLAG] & channel_mask == 0
             self._cache[channel_mask] = col_data[pick_list]
-            print('cached data for bitmask {:8b}')
+            # print('cached data for bitmask {:8b}')
         data = self._cache[channel_mask]
         #print('repr of sel data: ', repr(data))
         if len(data)<1:
@@ -720,14 +722,23 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             rel_data = np.column_stack((times, values))                
             #print('shape of resulting relative data: ', rel_data.shape)
             #print('repr. of resulting relative data: ', repr(rel_data))
-            self._eval_data.append(rel_data)
+            # store deviation from baseline for this channel:
+            self._eval_data.append(rel_data) 
             self._logic.evaluation_table.set_means(
                 cnt,
                 np.mean(times),
+                times.min(),
+                times.max(),
                 np.mean(values)
                 )
             adev = self.calculate_adev(values, float(params['target']))
             self._logic.adev_table.add_evaluation_adev(cnt, adev)
+            self._logic.evaluation_table.set_statistics(
+                cnt,
+                adev['dev_1s'],
+                adev['dev_ext'],
+                adev['time_span']
+                )
         # end of evaluation enumeration
 
     ########################################################################################
@@ -736,7 +747,21 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
         time_step = self._logic.adev_table.time_step 
         rate = 1/time_step
         tau_req = self._logic.adev_table.tau_values
+        key_tau_index = self._logic.adev_table.key_tau_index
         (tau_act, devs, errs, ns) = allantools.oadev(values, rate=rate, data_type='freq', taus=tau_req)
+        try:
+            key_tau = tau_act[key_tau_index]
+            key_dev = devs[key_tau_index]
+        except IndexError as err:
+            key_tau = tau_act[key_tau_index]
+            key_dev = devs[key_tau_index]
+        time_span = time_step * len(values)
+        dev_extrapolated = key_dev * math.sqrt(key_tau / time_span)
+        dev_1s = key_dev * math.sqrt(key_tau)
+        #print(
+        #    'from ', key_dev, ' @ ', key_tau, 's, extrapolated to ', 
+        #    dev_1s, ' @ 1s and ', dev_extrapolated, ' @ ',time_span, ' s.'
+        #    )
         devs_lower = np.zeros_like(devs)
         devs_upper = np.zeros_like(devs)
         for (index, tau) in enumerate(tau_act):
@@ -759,8 +784,13 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             (lo, hi) = allantools.confidence_interval( 
                 dev=dev, ci=0.68268949213708585, edf=edf 
                 )
-            devs_lower[index] = dev-lo
-            devs_upper[index] = dev+hi
+            # print('confidence interval: ', lo, ' <-- ', dev, ' --> ',hi)
+            devs_lower[index] = lo
+            devs_upper[index] = hi
+            log_devs = np.log10(devs/reference)
+            # for plotting, we need the LENGTH of the error bars
+            log_bar_down = abs(np.log10(devs_lower/reference) - log_devs)
+            log_bar_up   = abs(np.log10(devs_upper/reference) - log_devs)
         adev = { # assembly into dictionary
             'taus':tau_act,
             'devs':devs,
@@ -770,10 +800,14 @@ class DataHandler(object): # pylint: disable=locally-disabled, too-many-instance
             'frac_devs_lower':devs_lower/reference,
             'frac_devs_upper':devs_upper/reference,
             'log_taus':np.log10(tau_act),
-            'log_devs':np.log10(devs/reference),
-            'log_devs_lower':np.log10(devs_lower/reference),
-            'log_devs_upper':np.log10(devs_upper/reference),
-            'ref':reference
+            'log_devs':log_devs,
+            'log_bar_down':log_bar_down,
+            'log_bar_up'  :log_bar_up,
+            'ref':reference,
+            'time_span':time_span,
+            'key_tau':key_tau,
+            'dev_1s':dev_1s,
+            'dev_ext':dev_extrapolated
             }
         return adev
 
